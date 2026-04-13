@@ -1,0 +1,713 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		764620EE2F32B43200C279C4 /* AlarmKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 764620EC2F32B42E00C279C4 /* AlarmKit.framework */; platformFilter = ios; };
+		767B4DFC2F38E275003429B3 /* alarm-clock-1.caf in Sources */ = {isa = PBXBuildFile; fileRef = 767B4DF52F38E275003429B3 /* alarm-clock-1.caf */; };
+		767B4DFD2F38E275003429B3 /* alarm-clock.caf in Sources */ = {isa = PBXBuildFile; fileRef = 767B4DF42F38E275003429B3 /* alarm-clock.caf */; };
+		767B4DFE2F38E275003429B3 /* classic-alarm.caf in Sources */ = {isa = PBXBuildFile; fileRef = 767B4DF62F38E275003429B3 /* classic-alarm.caf */; };
+		767B4DFF2F38E275003429B3 /* digital-alarm-clock.caf in Sources */ = {isa = PBXBuildFile; fileRef = 767B4DF82F38E275003429B3 /* digital-alarm-clock.caf */; };
+		767B4E002F38E275003429B3 /* digital-alarm.caf in Sources */ = {isa = PBXBuildFile; fileRef = 767B4DF72F38E275003429B3 /* digital-alarm.caf */; };
+		767B4E012F38E275003429B3 /* dreamscape-alarm-clock.caf in Sources */ = {isa = PBXBuildFile; fileRef = 767B4DF92F38E275003429B3 /* dreamscape-alarm-clock.caf */; };
+		767B4E022F38E275003429B3 /* electronic-alarm-clock.caf in Sources */ = {isa = PBXBuildFile; fileRef = 767B4DFA2F38E275003429B3 /* electronic-alarm-clock.caf */; };
+		767B4E032F38E275003429B3 /* alarm-clock.caf in Resources */ = {isa = PBXBuildFile; fileRef = 767B4DF42F38E275003429B3 /* alarm-clock.caf */; };
+		767B4E042F38E275003429B3 /* alarm-clock-1.caf in Resources */ = {isa = PBXBuildFile; fileRef = 767B4DF52F38E275003429B3 /* alarm-clock-1.caf */; };
+		767B4E052F38E275003429B3 /* classic-alarm.caf in Resources */ = {isa = PBXBuildFile; fileRef = 767B4DF62F38E275003429B3 /* classic-alarm.caf */; };
+		767B4E062F38E275003429B3 /* digital-alarm.caf in Resources */ = {isa = PBXBuildFile; fileRef = 767B4DF72F38E275003429B3 /* digital-alarm.caf */; };
+		767B4E072F38E275003429B3 /* digital-alarm-clock.caf in Resources */ = {isa = PBXBuildFile; fileRef = 767B4DF82F38E275003429B3 /* digital-alarm-clock.caf */; };
+		767B4E082F38E275003429B3 /* dreamscape-alarm-clock.caf in Resources */ = {isa = PBXBuildFile; fileRef = 767B4DF92F38E275003429B3 /* dreamscape-alarm-clock.caf */; };
+		767B4E092F38E275003429B3 /* electronic-alarm-clock.caf in Resources */ = {isa = PBXBuildFile; fileRef = 767B4DFA2F38E275003429B3 /* electronic-alarm-clock.caf */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7646209B2F322A9D00C279C4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 764620852F322A9A00C279C4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7646208C2F322A9A00C279C4;
+			remoteInfo = WakeFlowFinal;
+		};
+		764620A52F322A9D00C279C4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 764620852F322A9A00C279C4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7646208C2F322A9A00C279C4;
+			remoteInfo = WakeFlowFinal;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		7646208D2F322A9A00C279C4 /* WakeFlowFinal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WakeFlowFinal.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7646209A2F322A9D00C279C4 /* WakeFlowFinalTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WakeFlowFinalTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		764620A42F322A9D00C279C4 /* WakeFlowFinalUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WakeFlowFinalUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		764620EC2F32B42E00C279C4 /* AlarmKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AlarmKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/AlarmKit.framework; sourceTree = DEVELOPER_DIR; };
+		767B4DF42F38E275003429B3 /* alarm-clock.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "alarm-clock.caf"; sourceTree = "<group>"; };
+		767B4DF52F38E275003429B3 /* alarm-clock-1.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "alarm-clock-1.caf"; sourceTree = "<group>"; };
+		767B4DF62F38E275003429B3 /* classic-alarm.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "classic-alarm.caf"; sourceTree = "<group>"; };
+		767B4DF72F38E275003429B3 /* digital-alarm.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "digital-alarm.caf"; sourceTree = "<group>"; };
+		767B4DF82F38E275003429B3 /* digital-alarm-clock.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "digital-alarm-clock.caf"; sourceTree = "<group>"; };
+		767B4DF92F38E275003429B3 /* dreamscape-alarm-clock.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "dreamscape-alarm-clock.caf"; sourceTree = "<group>"; };
+		767B4DFA2F38E275003429B3 /* electronic-alarm-clock.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "electronic-alarm-clock.caf"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		764620B92F327CA200C279C4 /* Exceptions for "WakeFlowFinal" folder in "WakeFlowFinal" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 7646208C2F322A9A00C279C4 /* WakeFlowFinal */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		764620E72F32956700C279C4 /* Exceptions for "WakeFlowFinal" folder in "Compile Sources" phase from "WakeFlowFinal" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 764620892F322A9A00C279C4 /* Sources */;
+			membershipExceptions = (
+				"ringtone-028-380250.caf",
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		7646208F2F322A9A00C279C4 /* WakeFlowFinal */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				764620B92F327CA200C279C4 /* Exceptions for "WakeFlowFinal" folder in "WakeFlowFinal" target */,
+				764620E72F32956700C279C4 /* Exceptions for "WakeFlowFinal" folder in "Compile Sources" phase from "WakeFlowFinal" target */,
+			);
+			path = WakeFlowFinal;
+			sourceTree = "<group>";
+		};
+		7646209D2F322A9D00C279C4 /* WakeFlowFinalTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WakeFlowFinalTests;
+			sourceTree = "<group>";
+		};
+		764620A72F322A9D00C279C4 /* WakeFlowFinalUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WakeFlowFinalUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7646208A2F322A9A00C279C4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				764620EE2F32B43200C279C4 /* AlarmKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		764620972F322A9D00C279C4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		764620A12F322A9D00C279C4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		764620842F322A9A00C279C4 = {
+			isa = PBXGroup;
+			children = (
+				767B4DF42F38E275003429B3 /* alarm-clock.caf */,
+				767B4DF52F38E275003429B3 /* alarm-clock-1.caf */,
+				767B4DF62F38E275003429B3 /* classic-alarm.caf */,
+				767B4DF72F38E275003429B3 /* digital-alarm.caf */,
+				767B4DF82F38E275003429B3 /* digital-alarm-clock.caf */,
+				767B4DF92F38E275003429B3 /* dreamscape-alarm-clock.caf */,
+				767B4DFA2F38E275003429B3 /* electronic-alarm-clock.caf */,
+				7646208F2F322A9A00C279C4 /* WakeFlowFinal */,
+				7646209D2F322A9D00C279C4 /* WakeFlowFinalTests */,
+				764620A72F322A9D00C279C4 /* WakeFlowFinalUITests */,
+				764620EB2F32B42D00C279C4 /* Frameworks */,
+				7646208E2F322A9A00C279C4 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		7646208E2F322A9A00C279C4 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7646208D2F322A9A00C279C4 /* WakeFlowFinal.app */,
+				7646209A2F322A9D00C279C4 /* WakeFlowFinalTests.xctest */,
+				764620A42F322A9D00C279C4 /* WakeFlowFinalUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		764620EB2F32B42D00C279C4 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				764620EC2F32B42E00C279C4 /* AlarmKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7646208C2F322A9A00C279C4 /* WakeFlowFinal */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 764620AE2F322A9D00C279C4 /* Build configuration list for PBXNativeTarget "WakeFlowFinal" */;
+			buildPhases = (
+				764620892F322A9A00C279C4 /* Sources */,
+				7646208A2F322A9A00C279C4 /* Frameworks */,
+				7646208B2F322A9A00C279C4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7646208F2F322A9A00C279C4 /* WakeFlowFinal */,
+			);
+			name = WakeFlowFinal;
+			packageProductDependencies = (
+			);
+			productName = WakeFlowFinal;
+			productReference = 7646208D2F322A9A00C279C4 /* WakeFlowFinal.app */;
+			productType = "com.apple.product-type.application";
+		};
+		764620992F322A9D00C279C4 /* WakeFlowFinalTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 764620B12F322A9D00C279C4 /* Build configuration list for PBXNativeTarget "WakeFlowFinalTests" */;
+			buildPhases = (
+				764620962F322A9D00C279C4 /* Sources */,
+				764620972F322A9D00C279C4 /* Frameworks */,
+				764620982F322A9D00C279C4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7646209C2F322A9D00C279C4 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7646209D2F322A9D00C279C4 /* WakeFlowFinalTests */,
+			);
+			name = WakeFlowFinalTests;
+			packageProductDependencies = (
+			);
+			productName = WakeFlowFinalTests;
+			productReference = 7646209A2F322A9D00C279C4 /* WakeFlowFinalTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		764620A32F322A9D00C279C4 /* WakeFlowFinalUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 764620B42F322A9D00C279C4 /* Build configuration list for PBXNativeTarget "WakeFlowFinalUITests" */;
+			buildPhases = (
+				764620A02F322A9D00C279C4 /* Sources */,
+				764620A12F322A9D00C279C4 /* Frameworks */,
+				764620A22F322A9D00C279C4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				764620A62F322A9D00C279C4 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				764620A72F322A9D00C279C4 /* WakeFlowFinalUITests */,
+			);
+			name = WakeFlowFinalUITests;
+			packageProductDependencies = (
+			);
+			productName = WakeFlowFinalUITests;
+			productReference = 764620A42F322A9D00C279C4 /* WakeFlowFinalUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		764620852F322A9A00C279C4 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2620;
+				TargetAttributes = {
+					7646208C2F322A9A00C279C4 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					764620992F322A9D00C279C4 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 7646208C2F322A9A00C279C4;
+					};
+					764620A32F322A9D00C279C4 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 7646208C2F322A9A00C279C4;
+					};
+				};
+			};
+			buildConfigurationList = 764620882F322A9A00C279C4 /* Build configuration list for PBXProject "WakeFlowFinal" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 764620842F322A9A00C279C4;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 7646208E2F322A9A00C279C4 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7646208C2F322A9A00C279C4 /* WakeFlowFinal */,
+				764620992F322A9D00C279C4 /* WakeFlowFinalTests */,
+				764620A32F322A9D00C279C4 /* WakeFlowFinalUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7646208B2F322A9A00C279C4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				767B4E042F38E275003429B3 /* alarm-clock-1.caf in Resources */,
+				767B4E032F38E275003429B3 /* alarm-clock.caf in Resources */,
+				767B4E072F38E275003429B3 /* digital-alarm-clock.caf in Resources */,
+				767B4E052F38E275003429B3 /* classic-alarm.caf in Resources */,
+				767B4E082F38E275003429B3 /* dreamscape-alarm-clock.caf in Resources */,
+				767B4E092F38E275003429B3 /* electronic-alarm-clock.caf in Resources */,
+				767B4E062F38E275003429B3 /* digital-alarm.caf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		764620982F322A9D00C279C4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		764620A22F322A9D00C279C4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		764620892F322A9A00C279C4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				767B4E002F38E275003429B3 /* digital-alarm.caf in Sources */,
+				767B4DFD2F38E275003429B3 /* alarm-clock.caf in Sources */,
+				767B4DFC2F38E275003429B3 /* alarm-clock-1.caf in Sources */,
+				767B4DFF2F38E275003429B3 /* digital-alarm-clock.caf in Sources */,
+				767B4E012F38E275003429B3 /* dreamscape-alarm-clock.caf in Sources */,
+				767B4DFE2F38E275003429B3 /* classic-alarm.caf in Sources */,
+				767B4E022F38E275003429B3 /* electronic-alarm-clock.caf in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		764620962F322A9D00C279C4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		764620A02F322A9D00C279C4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7646209C2F322A9D00C279C4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7646208C2F322A9A00C279C4 /* WakeFlowFinal */;
+			targetProxy = 7646209B2F322A9D00C279C4 /* PBXContainerItemProxy */;
+		};
+		764620A62F322A9D00C279C4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7646208C2F322A9A00C279C4 /* WakeFlowFinal */;
+			targetProxy = 764620A52F322A9D00C279C4 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		764620AC2F322A9D00C279C4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = V3CGY5282P;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		764620AD2F322A9D00C279C4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = V3CGY5282P;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		764620AF2F322A9D00C279C4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = WakeFlowFinal/WakeFlowFinal.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 83SXTC8MR2;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WakeFlowFinal/Info.plist;
+				// [NFC DEAKTIVIERT] INFOPLIST_KEY_NFCReaderUsageDescription = "Ich brauche Zugriff";
+				// [CRITICAL MESSAGING DEAKTIVIERT] INFOPLIST_KEY_NSCriticalMessagingUsageDescription = "Ich brauche Zugriff";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.marvin.wakeflowfinal;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		764620B02F322A9D00C279C4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = WakeFlowFinal/WakeFlowFinal.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 83SXTC8MR2;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WakeFlowFinal/Info.plist;
+				// [NFC DEAKTIVIERT] INFOPLIST_KEY_NFCReaderUsageDescription = "Ich brauche Zugriff";
+				// [CRITICAL MESSAGING DEAKTIVIERT] INFOPLIST_KEY_NSCriticalMessagingUsageDescription = "Ich brauche Zugriff";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.marvin.wakeflowfinal;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		764620B22F322A9D00C279C4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V3CGY5282P;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "-028.WakeFlowFinalTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WakeFlowFinal.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/WakeFlowFinal";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		764620B32F322A9D00C279C4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V3CGY5282P;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "-028.WakeFlowFinalTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WakeFlowFinal.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/WakeFlowFinal";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		764620B52F322A9D00C279C4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V3CGY5282P;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "-028.WakeFlowFinalUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = WakeFlowFinal;
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		764620B62F322A9D00C279C4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V3CGY5282P;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "-028.WakeFlowFinalUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = WakeFlowFinal;
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		764620882F322A9A00C279C4 /* Build configuration list for PBXProject "WakeFlowFinal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				764620AC2F322A9D00C279C4 /* Debug */,
+				764620AD2F322A9D00C279C4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		764620AE2F322A9D00C279C4 /* Build configuration list for PBXNativeTarget "WakeFlowFinal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				764620AF2F322A9D00C279C4 /* Debug */,
+				764620B02F322A9D00C279C4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		764620B12F322A9D00C279C4 /* Build configuration list for PBXNativeTarget "WakeFlowFinalTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				764620B22F322A9D00C279C4 /* Debug */,
+				764620B32F322A9D00C279C4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		764620B42F322A9D00C279C4 /* Build configuration list for PBXNativeTarget "WakeFlowFinalUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				764620B52F322A9D00C279C4 /* Debug */,
+				764620B62F322A9D00C279C4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 764620852F322A9A00C279C4 /* Project object */;
+}
