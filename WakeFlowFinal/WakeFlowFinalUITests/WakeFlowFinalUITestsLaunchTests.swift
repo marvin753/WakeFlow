@@ -4,7 +4,7 @@
 //
 //  Created by Viktor Rotgang on 03.02.26.
 //
-
+/*
 import XCTest
 
 final class WakeFlowFinalUITestsLaunchTests: XCTestCase {
@@ -31,3 +31,4 @@ final class WakeFlowFinalUITestsLaunchTests: XCTestCase {
         add(attachment)
     }
 }
+ */

@@ -13,12 +13,5 @@
 	<array>
 		<string>com.wakeflow.alarm</string>
 	</array>
-	<key>NFCReaderUsageDescription</key>
-	<string>WakeFlow benötigt NFC um den Alarm durch Scannen deines NFC-Chips zu stoppen.</string>
-	<key>com.apple.developer.nfc.readersession.formats</key>
-	<array>
-		<string>NDEF</string>
-		<string>TAG</string>
-	</array>
 </dict>
 </plist>

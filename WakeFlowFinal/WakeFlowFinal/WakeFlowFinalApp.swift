@@ -41,10 +41,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     // AlarmKit Permission anfragen
     func requestAlarmPermission() async {
         do {
-            // AlarmManager Instanz erstellen und Authorization anfragen
-            let alarmManager = AlarmManager()
-            try await alarmManager.requestAuthorization()
-            print("✅ AlarmKit Zugriff erlaubt")
+            let alarmManager = AlarmKit.AlarmManager.shared
+            let state = alarmManager.authorizationState
+
+            if state == .authorized {
+                print("✅ AlarmKit Zugriff bereits erlaubt")
+                return
+            }
+
+            let newState = try await alarmManager.requestAuthorization()
+            if newState == .authorized {
+                print("✅ AlarmKit Zugriff erlaubt")
+            } else {
+                print("⚠️ AlarmKit Zugriff nicht erlaubt: \(newState)")
+            }
         } catch {
             print("❌ Fehler bei AlarmKit Anfrage: \(error)")
         }

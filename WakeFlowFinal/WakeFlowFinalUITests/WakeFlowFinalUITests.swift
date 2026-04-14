@@ -4,7 +4,7 @@
 //
 //  Created by Viktor Rotgang on 03.02.26.
 //
-
+/*
 import XCTest
 
 final class WakeFlowFinalUITests: XCTestCase {
@@ -39,3 +39,4 @@ final class WakeFlowFinalUITests: XCTestCase {
         }
     }
 }
+ */

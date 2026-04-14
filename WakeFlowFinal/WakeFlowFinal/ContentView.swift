@@ -10,7 +10,11 @@ internal import Combine
 import UserNotifications
 import AVFoundation
 import MediaPlayer
+#if ENABLE_NFC
 import CoreNFC
+#endif
+import AlarmKit
+import ActivityKit
 
 
 // MARK: - Collection Extension (Safe Array Access)
@@ -61,7 +65,14 @@ let availableSounds: [(file: String, name: String)] = [
     ("ringtone-028-380250.caf", "Klingelton")
 ]
 
+@available(iOS 26.0, *)
+private struct WakeFlowAlarmMetadata: AlarmKit.AlarmMetadata {
+    let label: String
+    let soundName: String
+}
+
 // MARK: - NFC Alarm Reader
+#if ENABLE_NFC
 enum NFCActionType {
     case activate
     case deactivate
@@ -190,6 +201,7 @@ class NFCAlarmReader: NSObject, ObservableObject, NFCNDEFReaderSessionDelegate {
         }
     }
 }
+#endif
 
 // MARK: - Background Alarm Manager
 class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
@@ -210,6 +222,9 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     private var notificationsPaused: Bool = false // Status ob Notifications pausiert sind
     private var vibrationTimer: Timer? // Timer für kontinuierliche Vibration
     private var silentPlayer: AVAudioPlayer? // Silent audio um App wach zu halten
+    private var hasAuthorizedSystemAlarms = false
+    private var usesSystemAlarmByID: [UUID: Bool] = [:]
+    private let systemAlarmManager = AlarmKit.AlarmManager.shared
     
     override init() {
         super.init()
@@ -217,6 +232,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         startMonitoring()
         observeVolumeChanges()
         startSilentAudio() // Starte stillen Audio-Stream
+        refreshSystemAlarmAuthorization()
     }
     
     // Konvertiere internen Wert (0.25-0.8) zu System-Slider (0-1.0)
@@ -228,12 +244,48 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     func setupAudioSession() {
         do {
             let audioSession = AVAudioSession.sharedInstance()
-            // WICHTIG: playback ohne Options = VOLLE LAUTSTÄRKE!
-            try audioSession.setCategory(.playback, mode: .default, options: [])
+            // WICHTIG: playback mit duckOthers - andere Apps werden leiser, aber wir können spielen
+            try audioSession.setCategory(.playback, mode: .default, options: [.duckOthers])
             try audioSession.setActive(true, options: [])
             print("✅ Audio Session konfiguriert (VOLLE POWER)")
         } catch {
             print("❌ Audio Session Fehler: \(error)")
+        }
+    }
+    
+    /// Aggressiver Audio-Session-Aktivierungsversuch für Alarm-Wiedergabe
+    private func forceActivateAudioSession() -> Bool {
+        let audioSession = AVAudioSession.sharedInstance()
+        
+        // Versuch 1: Mit duckOthers (andere Apps werden leiser)
+        do {
+            try audioSession.setCategory(.playback, mode: .default, options: [.duckOthers])
+            try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+            print("✅ Audio Session aktiviert (duckOthers)")
+            return true
+        } catch {
+            print("⚠️ duckOthers fehlgeschlagen: \(error.localizedDescription)")
+        }
+        
+        // Versuch 2: Mit interruptSpokenAudioAndMixWithOthers (unterbricht andere Audio-Apps)
+        do {
+            try audioSession.setCategory(.playback, mode: .default, options: [.interruptSpokenAudioAndMixWithOthers])
+            try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+            print("✅ Audio Session aktiviert (interruptSpokenAudioAndMixWithOthers)")
+            return true
+        } catch {
+            print("⚠️ interruptSpokenAudioAndMixWithOthers fehlgeschlagen: \(error.localizedDescription)")
+        }
+        
+        // Versuch 3: Ohne Optionen (letzter Versuch)
+        do {
+            try audioSession.setCategory(.playback, mode: .default, options: [])
+            try audioSession.setActive(true, options: [])
+            print("✅ Audio Session aktiviert (ohne Optionen)")
+            return true
+        } catch {
+            print("❌ Alle Audio Session Aktivierungsversuche fehlgeschlagen: \(error.localizedDescription)")
+            return false
         }
     }
     
@@ -406,16 +458,20 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                 
                 // 3. Prüfe ob Player noch spielt
                 if !player.isPlaying {
-                    print("⚠️ Player gestoppt - starte neu!")
-                    player.play()
+                    print("⚠️ Player gestoppt - aktiviere Audio Session und starte neu!")
+                    // Versuche Audio Session aggressiv zu aktivieren bevor wir neu starten
+                    _ = self.forceActivateAudioSession()
+                    let restarted = player.play()
+                    print("⚠️ Player Neustart: \(restarted ? "✅ Erfolgreich" : "❌ Fehlgeschlagen")")
                 }
             }
             
-            // 4. Halte Audio Session aktiv
+            // 4. Halte Audio Session aktiv (mit duckOthers für bessere Kompatibilität)
             do {
+                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.duckOthers])
                 try AVAudioSession.sharedInstance().setActive(true, options: [])
             } catch {
-                // Silent fail
+                // Silent fail - wird beim nächsten Player-Stopp durch forceActivateAudioSession gehandhabt
             }
         }
         
@@ -569,6 +625,12 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     private func playSoundLoop() {
         guard let soundURL = currentSoundURL else { return }
         
+        // WICHTIG: Audio Session AGGRESSIV aktivieren bevor Player erstellt wird
+        let sessionActivated = forceActivateAudioSession()
+        if !sessionActivated {
+            print("⚠️ Audio Session konnte nicht aktiviert werden - versuche trotzdem zu spielen")
+        }
+        
         do {
             // Stop existing player
             audioPlayer?.stop()
@@ -589,7 +651,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                 print("▶️ Sound spielt in ENDLOS LOOP mit Player-Volume: 1.0 (MAX)")
                 print("🔒 System-Lautstärke: \(Int(targetVolume * 100))% (wird ERZWUNGEN!)")
             } else {
-                print("❌ Sound konnte nicht abgespielt werden")
+                print("❌ Sound konnte nicht abgespielt werden - Audio Session Status: \(sessionActivated)")
             }
         } catch {
             print("❌ Audio Player Fehler: \(error.localizedDescription)")
@@ -625,6 +687,18 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         
         // Remove ALL notifications (delivered + pending!)
         if let alarmID = currentAlarmID {
+            // Stoppe AlarmKit-Alert; wiederkehrende Alarme bleiben geplant
+            if let alarmModel = alarmsToCheck.first(where: { $0.id == alarmID }),
+               alarmModel.isEnabled,
+               !alarmModel.repeatDays.isEmpty {
+                if #available(iOS 26.0, *) {
+                    try? systemAlarmManager.stop(id: alarmID)
+                }
+                scheduleSystemAlarm(for: alarmModel)
+            } else {
+                cancelSystemAlarm(id: alarmID, stopIfAlerting: true)
+            }
+
             // Phase 1 — Synchronous removal of all KNOWN identifier patterns
             var knownIdentifiers: [String] = []
             for i in 0..<60 {
@@ -688,6 +762,170 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         notificationsPaused = false
         print("▶️ Notifications fortgesetzt (App wurde geschlossen)")
     }
+
+    func shouldShowAppKeepAliveWarning() -> Bool {
+        refreshSystemAlarmAuthorization()
+        return !hasAuthorizedSystemAlarms
+    }
+
+    private func refreshSystemAlarmAuthorization() {
+        guard #available(iOS 26.0, *) else {
+            hasAuthorizedSystemAlarms = false
+            return
+        }
+        hasAuthorizedSystemAlarms = systemAlarmManager.authorizationState == .authorized
+    }
+
+    @available(iOS 26.0, *)
+    private func localeWeekday(from appWeekday: Int) -> Locale.Weekday? {
+        switch appWeekday {
+        case 1: return .sunday
+        case 2: return .monday
+        case 3: return .tuesday
+        case 4: return .wednesday
+        case 5: return .thursday
+        case 6: return .friday
+        case 7: return .saturday
+        default: return nil
+        }
+    }
+
+    private func nextOneTimeAlarmDate(for alarm: Alarm, now: Date = Date()) -> Date? {
+        let calendar = Calendar.current
+        let targetComponents = calendar.dateComponents([.year, .month, .day], from: now)
+        var alarmComponents = targetComponents
+        let timeComponents = calendar.dateComponents([.hour, .minute], from: alarm.time)
+        alarmComponents.hour = timeComponents.hour
+        alarmComponents.minute = timeComponents.minute
+        alarmComponents.second = 0
+
+        guard var alarmDate = calendar.date(from: alarmComponents) else {
+            return nil
+        }
+
+        if alarmDate <= now {
+            alarmDate = calendar.date(byAdding: .day, value: 1, to: alarmDate) ?? alarmDate
+        }
+        return alarmDate
+    }
+
+    @available(iOS 26.0, *)
+    private func systemAlarmSchedule(for alarm: Alarm) -> AlarmKit.Alarm.Schedule? {
+        let calendar = Calendar.current
+        let timeComponents = calendar.dateComponents([.hour, .minute], from: alarm.time)
+        let hour = min(max(timeComponents.hour ?? 0, 0), 23)
+        let minute = min(max(timeComponents.minute ?? 0, 0), 59)
+
+        if alarm.repeatDays.isEmpty {
+            guard let date = nextOneTimeAlarmDate(for: alarm) else {
+                return nil
+            }
+            return .fixed(date)
+        }
+
+        let weekdays = alarm.repeatDays.compactMap { localeWeekday(from: $0) }
+        guard !weekdays.isEmpty else {
+            return nil
+        }
+
+        let relative = AlarmKit.Alarm.Schedule.Relative(
+            time: .init(hour: hour, minute: minute),
+            repeats: .weekly(weekdays)
+        )
+        return .relative(relative)
+    }
+
+    @available(iOS 26.0, *)
+    private func systemAlarmAttributes(for alarm: Alarm) -> AlarmKit.AlarmAttributes<WakeFlowAlarmMetadata> {
+        let stopButton = AlarmButton(
+            text: LocalizedStringResource(stringLiteral: "Stoppen"),
+            textColor: .white,
+            systemImageName: "stop.fill"
+        )
+
+        let alert = AlarmPresentation.Alert(
+            title: LocalizedStringResource(stringLiteral: alarm.label),
+            stopButton: stopButton
+        )
+
+        let presentation = AlarmPresentation(alert: alert)
+        let metadata = WakeFlowAlarmMetadata(label: alarm.label, soundName: alarm.soundName)
+
+        return AlarmAttributes(
+            presentation: presentation,
+            metadata: metadata,
+            tintColor: .red
+        )
+    }
+
+    private func scheduleSystemAlarm(for alarm: Alarm) {
+        guard #available(iOS 26.0, *) else {
+            usesSystemAlarmByID[alarm.id] = false
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+
+            do {
+                var authState = self.systemAlarmManager.authorizationState
+                if authState == .notDetermined {
+                    authState = try await self.systemAlarmManager.requestAuthorization()
+                }
+                self.hasAuthorizedSystemAlarms = (authState == .authorized)
+
+                guard authState == .authorized else {
+                    self.usesSystemAlarmByID[alarm.id] = false
+                    print("⚠️ AlarmKit nicht autorisiert - nutze Notification-Fallback: \(alarm.label)")
+                    return
+                }
+
+                guard let schedule = self.systemAlarmSchedule(for: alarm) else {
+                    self.usesSystemAlarmByID[alarm.id] = false
+                    print("⚠️ AlarmKit Schedule ungültig: \(alarm.label)")
+                    return
+                }
+
+                let soundFileName = alarm.soundName.replacingOccurrences(of: ".caf", with: "") + ".caf"
+                let sound: ActivityKit.AlertConfiguration.AlertSound
+                if Bundle.main.url(
+                    forResource: alarm.soundName.replacingOccurrences(of: ".caf", with: ""),
+                    withExtension: "caf"
+                ) != nil {
+                    sound = .named(soundFileName)
+                } else {
+                    sound = .default
+                    print("⚠️ AlarmKit Sound nicht gefunden (\(soundFileName)), nutze default")
+                }
+
+                let configuration = AlarmKit.AlarmManager.AlarmConfiguration<WakeFlowAlarmMetadata>.alarm(
+                    schedule: schedule,
+                    attributes: self.systemAlarmAttributes(for: alarm),
+                    sound: sound
+                )
+
+                try? self.systemAlarmManager.cancel(id: alarm.id)
+                _ = try await self.systemAlarmManager.schedule(id: alarm.id, configuration: configuration)
+
+                self.usesSystemAlarmByID[alarm.id] = true
+                print("✅ AlarmKit Alarm geplant: \(alarm.label) [\(alarm.id.uuidString)]")
+            } catch {
+                self.usesSystemAlarmByID[alarm.id] = false
+                self.refreshSystemAlarmAuthorization()
+                print("❌ AlarmKit Scheduling Fehler (\(alarm.label)): \(error)")
+            }
+        }
+    }
+
+    private func cancelSystemAlarm(id: UUID, stopIfAlerting: Bool = false) {
+        guard #available(iOS 26.0, *) else { return }
+
+        if stopIfAlerting {
+            try? systemAlarmManager.stop(id: id)
+        }
+        try? systemAlarmManager.cancel(id: id)
+        usesSystemAlarmByID[id] = nil
+    }
     
     // WICHTIG: Plane einen Alarm (wird beim App-Start für alle aktiven Alarme aufgerufen!)
     func scheduleAlarm(_ alarm: Alarm) {
@@ -695,17 +933,19 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         cancelAlarm(alarm)
         
         guard alarm.isEnabled else { return }
-        
+
+        resetAppKillWarning()
+        scheduleSystemAlarm(for: alarm)
+
         // WICHTIG: Starte Silent Audio um App wach zu halten
-        startSilentAudio()
+        startSilentAudio(forceStart: true)
         
         let calendar = Calendar.current
         let components = calendar.dateComponents([.hour, .minute], from: alarm.time)
         
-        // Schedule 60 notifications over 2 minutes (one every 2 seconds)
-        // This creates a persistent alarm that rings for 2 minutes
-        let notificationCount = 60
-        let intervalSeconds: TimeInterval = 2.0
+        // Schmale Notification-Staffel als Fallback zusätzlich zu AlarmKit
+        let notificationCount = 12
+        let intervalSeconds: TimeInterval = 5.0
 
         // Prüfe verfügbare Pending-Notification-Slots (iOS Limit: 64)
         let center = UNUserNotificationCenter.current()
@@ -716,30 +956,16 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             let scheduleCount = min(notificationCount, availableSlots)
 
             if scheduleCount == 0 {
-                print("⚠️ Keine verfügbaren Slots um Alarm-Notifications zu planen (Limit erreicht)")
-                return
+                print("⚠️ Keine Slots für Notification-Fallback verfügbar - AlarmKit bleibt Primärpfad")
             }
 
             if alarm.repeatDays.isEmpty {
             // Einmaliger Alarm
             let now = Date()
             
-            // Zielzeit erstellen
-            let targetComponents = calendar.dateComponents([.year, .month, .day], from: now)
-            var alarmComponents = targetComponents
-            let timeComponents = calendar.dateComponents([.hour, .minute], from: alarm.time)
-            alarmComponents.hour = timeComponents.hour
-            alarmComponents.minute = timeComponents.minute
-            alarmComponents.second = 0
-            
-            guard var alarmDate = calendar.date(from: alarmComponents) else {
+            guard let alarmDate = self.nextOneTimeAlarmDate(for: alarm, now: now) else {
                 print("❌ Konnte Alarm-Datum nicht erstellen")
                 return
-            }
-            
-            // Wenn die Zeit heute schon vorbei ist, auf morgen verschieben
-            if alarmDate <= now {
-                alarmDate = calendar.date(byAdding: .day, value: 1, to: alarmDate) ?? alarmDate
             }
             
             let timeInterval = alarmDate.timeIntervalSince(now)
@@ -754,7 +980,8 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             }
             
             // Schedule multiple notifications (begrenze auf scheduleCount)
-            for i in 0..<scheduleCount {
+            if scheduleCount > 0 {
+                for i in 0..<scheduleCount {
                 let content = UNMutableNotificationContent()
                 content.title = "⏰ WakeFlow Wecker"
                 content.body = alarm.label
@@ -775,7 +1002,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                     }
                 }
 
-                content.categoryIdentifier = "ALARM"
+                content.categoryIdentifier = "ALARM_CATEGORY"
                 content.badge = NSNumber(value: i + 1)
                 content.interruptionLevel = .timeSensitive // Wichtige Benachrichtigung
                 
@@ -799,6 +1026,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                         print("✅ Benachrichtigung \(i) geplant in \(finalInterval)s mit Sound")
                     }
                 }
+            }
             }
         } else {
             // Wiederkehrender Alarm - für jeden ausgewählten Tag
@@ -826,7 +1054,8 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                 }
                 
                 // Schedule multiple notifications for this day (begrenze auf scheduleCount)
-                for i in 0..<scheduleCount {
+                if scheduleCount > 0 {
+                    for i in 0..<scheduleCount {
                     let content = UNMutableNotificationContent()
                     content.title = "⏰ WakeFlow Wecker"
                     content.body = alarm.label
@@ -845,7 +1074,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                         }
                     }
 
-                    content.categoryIdentifier = "ALARM"
+                    content.categoryIdentifier = "ALARM_CATEGORY"
                     content.badge = NSNumber(value: i + 1)
                     content.interruptionLevel = .timeSensitive
                     
@@ -870,6 +1099,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                         }
                     }
                 }
+                }
             }
         }
         
@@ -881,6 +1111,8 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     }
     
     func cancelAlarm(_ alarm: Alarm) {
+        cancelSystemAlarm(id: alarm.id)
+
         var identifiers: [String] = []
         
         // All notification indices (0-59)
@@ -932,6 +1164,8 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     
     // Bereite App für Background Alarme vor
     func prepareForBackgroundAlarms() {
+        refreshSystemAlarmAuthorization()
+
         // Prüfe ob es aktive Alarme gibt
         if hasActiveAlarms() {
             print("🔄 App bereit für Background Alarme")
@@ -940,7 +1174,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     }
     
     // Starte stillen Audio-Stream um App im Hintergrund wach zu halten
-    private func startSilentAudio() {
+    private func startSilentAudio(forceStart: Bool = false) {
         // Erstelle einen 1-Sekunden Stille-Sound
         let silenceURL = URL(fileURLWithPath: "/System/Library/Audio/UISounds/silence.caf")
         
@@ -950,8 +1184,8 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             silentPlayer?.volume = 0.01 // Fast unhörbar
             silentPlayer?.prepareToPlay()
             
-            // Spiele NUR wenn es aktive Alarme gibt
-            if hasActiveAlarms() {
+            // Spiele wenn gerade aktiv geplant wird ODER aktive Alarme existieren
+            if forceStart || hasActiveAlarms() {
                 silentPlayer?.play()
                 print("🔇 Silent Audio gestartet - App bleibt im Hintergrund aktiv")
             }
@@ -964,7 +1198,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                     silentPlayer?.numberOfLoops = -1
                     silentPlayer?.volume = 0.0 // Komplett stumm
                     silentPlayer?.prepareToPlay()
-                    if hasActiveAlarms() {
+                    if forceStart || hasActiveAlarms() {
                         silentPlayer?.play()
                         print("🔇 Silent Audio (Fallback) gestartet")
                     }
@@ -995,8 +1229,8 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["app-kill-warning"])
         
         let content = UNMutableNotificationContent()
-        content.title = "⚠️ WakeFlow muss geöffnet bleiben"
-        content.body = "Die App darf nicht komplett geschlossen sein damit dein Wecker zuverlässig klingelt!"
+        content.title = "⚠️ Fallback-Modus aktiv"
+        content.body = "Öffne WakeFlow kurz vor dem Schlafen, damit dein Alarm im Fallback zuverlässig startet."
         content.interruptionLevel = .timeSensitive
         content.sound = .default
         content.categoryIdentifier = "WARNING_CATEGORY"
@@ -1457,9 +1691,14 @@ struct ContentView: View {
             
             // Prüfe ob aktive Wecker vorhanden sind (und kein Alarm gerade klingelt)
             if backgroundAlarmManager.hasActiveAlarms() && !backgroundAlarmManager.isPlaying {
-                // Plane Warnung dass App offen bleiben muss
-                backgroundAlarmManager.scheduleAppKillWarning()
-                print("⚠️ App in Hintergrund mit aktivem Wecker - Warnung geplant")
+                if backgroundAlarmManager.shouldShowAppKeepAliveWarning() {
+                    // Nur Fallback-Hinweis, wenn kein zuverlässiger systemischer Alarmpfad aktiv ist
+                    backgroundAlarmManager.scheduleAppKillWarning()
+                    print("⚠️ App in Hintergrund mit aktivem Wecker - Fallback-Warnung geplant")
+                } else {
+                    backgroundAlarmManager.cancelAppKillWarning()
+                    print("✅ App in Hintergrund - AlarmKit übernimmt zuverlässig")
+                }
             } else {
                 print("📱 App in Hintergrund - Notifications fortgesetzt")
             }
@@ -2437,7 +2676,7 @@ struct EditAlarmView: View {
 }
 
 // MARK: - NFC Activation View [DEAKTIVIERT]
-#if false
+#if ENABLE_NFC
 // [NFC DEAKTIVIERT] — NFCActivationView
 struct NFCActivationView: View {
     @Binding var isPresented: Bool
@@ -2573,7 +2812,7 @@ struct NFCActivationView: View {
 #endif
 
 // MARK: - Alarm Stop View [DEAKTIVIERT]
-#if false
+#if ENABLE_NFC
 // [NFC DEAKTIVIERT] — AlarmStopView
 struct AlarmStopView: View {
     @Binding var isPresented: Bool
@@ -2848,7 +3087,9 @@ class SoundPreviewPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
 struct MoonView: View {
     let iosBlue: Color
     @ObservedObject var backgroundAlarmManager: BackgroundAlarmManager
+    #if ENABLE_NFC
     @StateObject private var nfcReader = NFCAlarmReader()
+    #endif
     @State private var isPressed = false
     @State private var showSuccess = false
     @State private var pulseScale: CGFloat = 1.0
@@ -2866,7 +3107,11 @@ struct MoonView: View {
 
                 // Interaktiver Mond - Neues Design
                 Button(action: {
+                    #if ENABLE_NFC
                     stopAlarmWithNFC()
+                    #else
+                    stopAlarmDirectly()
+                    #endif
                 }) {
                     Image("CrescentMoon")
                         .resizable()
@@ -2910,7 +3155,7 @@ struct MoonView: View {
                             .font(.system(size: 34, weight: .bold))
                             .foregroundColor(.white)
 
-                        Text("Tippe auf den Mond und scanne\ndeinen NFC-Chip um den Alarm zu stoppen")
+                        Text("Tippe auf den Mond um den Alarm zu stoppen")
                             .font(.system(size: 16))
                             .foregroundColor(iosBlue)
                             .multilineTextAlignment(.center)
@@ -2935,6 +3180,7 @@ struct MoonView: View {
                 pulseScale = 1.05
             }
         }
+        #if ENABLE_NFC
         .onChange(of: nfcReader.isScanned) { isScanned in
             if isScanned {
                 // 1. Callback ZUERST aufrufen (bevor stopAlarm() die ID löscht)
@@ -2955,8 +3201,10 @@ struct MoonView: View {
                 nfcReader.isScanned = false
             }
         }
+        #endif
     }
 
+    #if ENABLE_NFC
     private func stopAlarmWithNFC() {
         print("🌙 Mond gedrückt - Stoppe Alarm mit NFC...")
 
@@ -2970,6 +3218,7 @@ struct MoonView: View {
             print("❌ NFC nicht verfügbar auf diesem Gerät")
         }
     }
+    #endif
 
     private func stopAlarmDirectly() {
         // 1:1 Nachbau des NFC-Stop-Flows (AlarmStopView.onChange).
