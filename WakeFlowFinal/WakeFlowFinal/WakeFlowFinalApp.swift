@@ -60,7 +60,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
     }
     
-    // Handle notifications when app is in foreground OR background
+    // Wird nur aufgerufen, wenn eine Notification im Vordergrund präsentiert wird.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         
         let userInfo = notification.request.content.userInfo
@@ -73,7 +73,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             
             DispatchQueue.main.async {
                 if !BackgroundAlarmManager.shared.isPlaying {
-                    BackgroundAlarmManager.shared.triggerAlarmFromNotification(alarmID: alarmID)
+                    BackgroundAlarmManager.shared.triggerAlarmFromNotification(alarmID: alarmID, userInfo: userInfo)
                 }
             }
         }
@@ -96,7 +96,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             print("🔔 Notification erhalten für Alarm: \(alarmID)")
             
             DispatchQueue.main.async {
-                BackgroundAlarmManager.shared.triggerAlarmFromNotification(alarmID: alarmID)
+                BackgroundAlarmManager.shared.triggerAlarmFromNotification(alarmID: alarmID, userInfo: userInfo)
             }
         }
         

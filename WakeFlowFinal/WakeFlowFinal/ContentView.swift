@@ -225,6 +225,10 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     private var hasAuthorizedSystemAlarms = false
     private var usesSystemAlarmByID: [UUID: Bool] = [:]
     private let systemAlarmManager = AlarmKit.AlarmManager.shared
+    private var alarmUpdatesTask: Task<Void, Never>?
+    private var firedLocalAlarmKeys = Set<String>()
+    private let localAlarmFireWindow: TimeInterval = 90
+    private let scheduledAlarmSnapshotsKey = "scheduledAlarmSnapshots"
     
     override init() {
         super.init()
@@ -233,6 +237,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         observeVolumeChanges()
         startSilentAudio() // Starte stillen Audio-Stream
         refreshSystemAlarmAuthorization()
+        observeSystemAlarmUpdates()
     }
     
     // Konvertiere internen Wert (0.25-0.8) zu System-Slider (0-1.0)
@@ -332,6 +337,154 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     func updateAlarms(_ alarms: [Alarm]) {
         alarmsToCheck = alarms
     }
+
+    private func loadSavedAlarmsFromDefaults() -> [Alarm] {
+        guard let data = UserDefaults.standard.data(forKey: "savedAlarms"),
+              let decoded = try? JSONDecoder().decode([Alarm].self, from: data) else {
+            return []
+        }
+        return decoded
+    }
+
+    private func loadScheduledAlarmSnapshots() -> [UUID: Alarm] {
+        guard let data = UserDefaults.standard.data(forKey: scheduledAlarmSnapshotsKey),
+              let decoded = try? JSONDecoder().decode([Alarm].self, from: data) else {
+            return [:]
+        }
+        return Dictionary(uniqueKeysWithValues: decoded.map { ($0.id, $0) })
+    }
+
+    private func persistScheduledAlarmSnapshot(_ alarm: Alarm) {
+        var snapshots = loadScheduledAlarmSnapshots()
+        snapshots[alarm.id] = alarm
+        if let encoded = try? JSONEncoder().encode(Array(snapshots.values)) {
+            UserDefaults.standard.set(encoded, forKey: scheduledAlarmSnapshotsKey)
+        }
+    }
+
+    private func removeScheduledAlarmSnapshot(id: UUID) {
+        var snapshots = loadScheduledAlarmSnapshots()
+        snapshots[id] = nil
+        if snapshots.isEmpty {
+            UserDefaults.standard.removeObject(forKey: scheduledAlarmSnapshotsKey)
+            return
+        }
+        if let encoded = try? JSONEncoder().encode(Array(snapshots.values)) {
+            UserDefaults.standard.set(encoded, forKey: scheduledAlarmSnapshotsKey)
+        }
+    }
+
+    private func notificationPayload(for alarm: Alarm) -> [String: Any] {
+        [
+            "alarmID": alarm.id.uuidString,
+            "alarmTime": alarm.time.timeIntervalSince1970,
+            "alarmLabel": alarm.label,
+            "alarmSoundName": alarm.soundName,
+            "alarmVolume": NSNumber(value: alarm.volume)
+        ]
+    }
+
+    private func alarmFromNotificationPayload(id alarmID: UUID, userInfo: [AnyHashable: Any]) -> Alarm? {
+        guard let label = userInfo["alarmLabel"] as? String,
+              let soundName = userInfo["alarmSoundName"] as? String else {
+            return nil
+        }
+
+        let timeInterval = (userInfo["alarmTime"] as? TimeInterval) ?? Date().timeIntervalSince1970
+        let volume: Float
+        if let number = userInfo["alarmVolume"] as? NSNumber {
+            volume = number.floatValue
+        } else if let doubleValue = userInfo["alarmVolume"] as? Double {
+            volume = Float(doubleValue)
+        } else {
+            volume = 1.0
+        }
+
+        return Alarm(
+            id: alarmID,
+            time: Date(timeIntervalSince1970: timeInterval),
+            isEnabled: true,
+            label: label,
+            repeatDays: [],
+            soundName: soundName,
+            volume: volume
+        )
+    }
+
+    private func resolveAlarm(id alarmID: UUID, userInfo: [AnyHashable: Any] = [:]) -> Alarm? {
+        if let alarm = alarmsToCheck.first(where: { $0.id == alarmID }) {
+            return alarm
+        }
+        if let alarm = loadSavedAlarmsFromDefaults().first(where: { $0.id == alarmID }) {
+            return alarm
+        }
+        if let alarm = loadScheduledAlarmSnapshots()[alarmID] {
+            return alarm
+        }
+        if let alarm = alarmFromNotificationPayload(id: alarmID, userInfo: userInfo) {
+            return alarm
+        }
+        if let alarm = loadActiveAlarmState(), alarm.id == alarmID {
+            return alarm
+        }
+        return nil
+    }
+
+    private func notificationSound(for alarm: Alarm) -> UNNotificationSound {
+        let soundFileName = alarm.soundName.replacingOccurrences(of: ".caf", with: "") + ".caf"
+        if Bundle.main.url(forResource: alarm.soundName.replacingOccurrences(of: ".caf", with: ""), withExtension: "caf") != nil {
+            return UNNotificationSound(named: UNNotificationSoundName(rawValue: soundFileName))
+        }
+        print("⚠️ Notification Sound nicht gefunden (\(soundFileName)), nutze default")
+        return .default
+    }
+
+    private func notificationRequest(for alarm: Alarm, identifier: String, badge: Int, timeInterval: TimeInterval) -> UNNotificationRequest {
+        let content = UNMutableNotificationContent()
+        content.title = "⏰ WakeFlow Wecker"
+        content.body = alarm.label
+        content.sound = notificationSound(for: alarm)
+        content.categoryIdentifier = "ALARM_CATEGORY"
+        content.badge = NSNumber(value: badge)
+        content.interruptionLevel = .timeSensitive
+        content.userInfo = notificationPayload(for: alarm)
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: timeInterval, repeats: false)
+        return UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+    }
+
+    private func localFireKey(for alarm: Alarm, fireDate: Date) -> String {
+        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+        return "\(alarm.id.uuidString)-\(components.year ?? 0)-\(components.month ?? 0)-\(components.day ?? 0)-\(components.hour ?? 0)-\(components.minute ?? 0)"
+    }
+
+    private func shouldTriggerLocalAlarm(_ alarm: Alarm, now: Date) -> Bool {
+        let calendar = Calendar.current
+        let alarmComponents = calendar.dateComponents([.hour, .minute], from: alarm.time)
+        guard let hour = alarmComponents.hour,
+              let minute = alarmComponents.minute,
+              let fireDate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: now) else {
+            return false
+        }
+
+        let currentWeekday = calendar.component(.weekday, from: now)
+        guard alarm.repeatDays.isEmpty || alarm.repeatDays.contains(currentWeekday) else {
+            return false
+        }
+
+        let elapsed = now.timeIntervalSince(fireDate)
+        guard elapsed >= 0 && elapsed < localAlarmFireWindow else {
+            return false
+        }
+
+        let key = localFireKey(for: alarm, fireDate: fireDate)
+        guard !firedLocalAlarmKeys.contains(key) else {
+            return false
+        }
+
+        firedLocalAlarmKeys.insert(key)
+        return true
+    }
     
     private func checkAlarms() {
         let now = Date()
@@ -345,24 +498,15 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         }
         
         for alarm in alarmsToCheck where alarm.isEnabled {
-            let alarmComponents = calendar.dateComponents([.hour, .minute], from: alarm.time)
-            
-            if currentComponents.hour == alarmComponents.hour &&
-               currentComponents.minute == alarmComponents.minute &&
-               currentComponents.second == 0 {
-                
-                if alarm.repeatDays.isEmpty || alarm.repeatDays.contains(currentComponents.weekday ?? 0) {
-                    if currentAlarmID != alarm.id {
-                        print("🔔 ALARM TRIGGERED: \(alarm.label)")
-                        playAlarm(alarm)
-                        currentAlarmID = alarm.id
-                    }
-                }
+            if shouldTriggerLocalAlarm(alarm, now: now), currentAlarmID != alarm.id {
+                print("🔔 ALARM TRIGGERED: \(alarm.label)")
+                playAlarm(alarm)
+                currentAlarmID = alarm.id
             }
         }
     }
     
-    func playAlarm(_ alarm: Alarm) {
+    func playAlarm(_ alarm: Alarm, shouldNotify: Bool = true) {
         print("🎵 Versuche Sound zu laden: \(alarm.soundName)")
         
         guard let soundURL = Bundle.main.url(
@@ -396,8 +540,10 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         // 3. Starte kontinuierliche Vibration
         startVibration()
         
-        // 4. Sende HIGH PRIORITY Notification (triggert iOS Wecker-ähnliche UI)
-        sendSystemAlarmNotification(for: alarm)
+        // 4. Sende HIGH PRIORITY Notification nur im lokalen Fallback-Pfad.
+        if shouldNotify {
+            sendSystemAlarmNotification(for: alarm)
+        }
         
         // Stoppe nach 10 Minuten automatisch
         stopTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: false) { [weak self] _ in
@@ -557,10 +703,10 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                 content.title = "⏰ \(alarm.label)"
                 content.body = "Wecker klingelt - Öffne die App zum Stoppen"
                 content.interruptionLevel = .timeSensitive // [CRITICAL MESSAGING DEAKTIVIERT — war .critical]
-                content.sound = .default // [CRITICAL MESSAGING DEAKTIVIERT — war .defaultCritical]
+                content.sound = self.notificationSound(for: alarm)
                 content.badge = NSNumber(value: i)
                 content.categoryIdentifier = "ALARM_CATEGORY"
-                content.userInfo = ["alarmID": alarm.id.uuidString]
+                content.userInfo = self.notificationPayload(for: alarm)
 
                 let timeInterval = TimeInterval(i * 3)
                 let trigger = UNTimeIntervalNotificationTrigger(timeInterval: timeInterval, repeats: false)
@@ -599,14 +745,14 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         content.interruptionLevel = .timeSensitive // [CRITICAL MESSAGING DEAKTIVIERT — war .critical]
 
         // [CRITICAL MESSAGING DEAKTIVIERT] — Standard sound
-        content.sound = .default // [CRITICAL MESSAGING DEAKTIVIERT — war .defaultCritical]
+        content.sound = notificationSound(for: alarm)
         
         // Badge
         content.badge = NSNumber(value: count + 1)
         
         // Category mit Action
         content.categoryIdentifier = "ALARM_CATEGORY"
-        content.userInfo = ["alarmID": alarm.id.uuidString]
+        content.userInfo = notificationPayload(for: alarm)
         
         // Unique identifier für jede Notification
         let request = UNNotificationRequest(
@@ -694,14 +840,16 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                 if #available(iOS 26.0, *) {
                     try? systemAlarmManager.stop(id: alarmID)
                 }
+                persistScheduledAlarmSnapshot(alarmModel)
                 scheduleSystemAlarm(for: alarmModel)
             } else {
                 cancelSystemAlarm(id: alarmID, stopIfAlerting: true)
+                removeScheduledAlarmSnapshot(id: alarmID)
             }
 
             // Phase 1 — Synchronous removal of all KNOWN identifier patterns
             var knownIdentifiers: [String] = []
-            for i in 0..<60 {
+            for i in 0...100 {
                 // scheduleAlarm — einmaliger Alarm
                 knownIdentifiers.append("\(alarmID.uuidString)-\(i)")
                 // scheduleAlarm — wiederkehrender Alarm (pro Wochentag)
@@ -713,6 +861,9 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             }
             // scheduleBackupNotification — einzelne repeating Backup-Notification
             knownIdentifiers.append("backup-alarm-\(alarmID.uuidString)")
+            for day in 1...7 {
+                knownIdentifiers.append("backup-alarm-\(alarmID.uuidString)-\(day)")
+            }
 
             let center = UNUserNotificationCenter.current()
             center.removePendingNotificationRequests(withIdentifiers: knownIdentifiers)
@@ -774,6 +925,33 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             return
         }
         hasAuthorizedSystemAlarms = systemAlarmManager.authorizationState == .authorized
+    }
+
+    private func observeSystemAlarmUpdates() {
+        guard #available(iOS 26.0, *) else { return }
+
+        alarmUpdatesTask?.cancel()
+        alarmUpdatesTask = Task { [weak self] in
+            for await systemAlarms in AlarmKit.AlarmManager.shared.alarmUpdates {
+                await MainActor.run {
+                    self?.handleSystemAlarmUpdates(systemAlarms)
+                }
+            }
+        }
+    }
+
+    @available(iOS 26.0, *)
+    private func handleSystemAlarmUpdates(_ systemAlarms: [AlarmKit.Alarm]) {
+        for systemAlarm in systemAlarms where systemAlarm.state == .alerting {
+            guard currentAlarmID != systemAlarm.id else { continue }
+            guard let alarm = resolveAlarm(id: systemAlarm.id) else {
+                print("⚠️ AlarmKit meldet alerting, aber Alarmdaten fehlen: \(systemAlarm.id)")
+                continue
+            }
+
+            print("🔔 AlarmKit ALERTING erkannt: \(alarm.label)")
+            playAlarm(alarm, shouldNotify: false)
+        }
     }
 
     @available(iOS 26.0, *)
@@ -874,15 +1052,22 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                 }
                 self.hasAuthorizedSystemAlarms = (authState == .authorized)
 
+                guard self.loadScheduledAlarmSnapshots()[alarm.id]?.isEnabled == true else {
+                    print("ℹ️ Alarm wurde während der AlarmKit-Anfrage deaktiviert: \(alarm.label)")
+                    return
+                }
+
                 guard authState == .authorized else {
                     self.usesSystemAlarmByID[alarm.id] = false
                     print("⚠️ AlarmKit nicht autorisiert - nutze Notification-Fallback: \(alarm.label)")
+                    self.scheduleNotificationFallbacks(for: alarm)
                     return
                 }
 
                 guard let schedule = self.systemAlarmSchedule(for: alarm) else {
                     self.usesSystemAlarmByID[alarm.id] = false
                     print("⚠️ AlarmKit Schedule ungültig: \(alarm.label)")
+                    self.scheduleNotificationFallbacks(for: alarm)
                     return
                 }
 
@@ -913,6 +1098,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                 self.usesSystemAlarmByID[alarm.id] = false
                 self.refreshSystemAlarmAuthorization()
                 print("❌ AlarmKit Scheduling Fehler (\(alarm.label)): \(error)")
+                self.scheduleNotificationFallbacks(for: alarm)
             }
         }
     }
@@ -929,26 +1115,35 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     
     // WICHTIG: Plane einen Alarm (wird beim App-Start für alle aktiven Alarme aufgerufen!)
     func scheduleAlarm(_ alarm: Alarm) {
-        // Remove old notifications for this alarm
         cancelAlarm(alarm)
         
-        guard alarm.isEnabled else { return }
+        guard alarm.isEnabled else {
+            removeScheduledAlarmSnapshot(id: alarm.id)
+            return
+        }
 
+        persistScheduledAlarmSnapshot(alarm)
         resetAppKillWarning()
-        scheduleSystemAlarm(for: alarm)
+
+        if #available(iOS 26.0, *) {
+            scheduleSystemAlarm(for: alarm)
+        } else {
+            scheduleNotificationFallbacks(for: alarm)
+        }
+    }
+
+    private func scheduleNotificationFallbacks(for alarm: Alarm) {
+        print("📢 Plane Notification-Fallback für: \(alarm.label)")
 
         // WICHTIG: Starte Silent Audio um App wach zu halten
         startSilentAudio(forceStart: true)
-        
+
         let calendar = Calendar.current
         let components = calendar.dateComponents([.hour, .minute], from: alarm.time)
-        
-        // Schmale Notification-Staffel als Fallback zusätzlich zu AlarmKit
         let notificationCount = 12
         let intervalSeconds: TimeInterval = 5.0
-
-        // Prüfe verfügbare Pending-Notification-Slots (iOS Limit: 64)
         let center = UNUserNotificationCenter.current()
+
         center.getPendingNotificationRequests { requests in
             let maxPending = 64
             let currentPending = requests.count
@@ -956,173 +1151,111 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             let scheduleCount = min(notificationCount, availableSlots)
 
             if scheduleCount == 0 {
-                print("⚠️ Keine Slots für Notification-Fallback verfügbar - AlarmKit bleibt Primärpfad")
+                print("⚠️ Keine Slots für Notification-Fallback verfügbar")
             }
 
             if alarm.repeatDays.isEmpty {
-            // Einmaliger Alarm
-            let now = Date()
-            
-            guard let alarmDate = self.nextOneTimeAlarmDate(for: alarm, now: now) else {
-                print("❌ Konnte Alarm-Datum nicht erstellen")
-                return
-            }
-            
-            let timeInterval = alarmDate.timeIntervalSince(now)
-            
-            print("📅 Alarm geplant für: \(alarmDate)")
-            print("⏱️ In: \(timeInterval) Sekunden (\(timeInterval / 60) Minuten)")
-            
-            // Sicherstellen dass timeInterval positiv und mindestens 1 Sekunde ist
-            guard timeInterval >= 1 else {
-                print("❌ TimeInterval zu kurz: \(timeInterval)")
-                return
-            }
-            
-            // Schedule multiple notifications (begrenze auf scheduleCount)
-            if scheduleCount > 0 {
-                for i in 0..<scheduleCount {
-                let content = UNMutableNotificationContent()
-                content.title = "⏰ WakeFlow Wecker"
-                content.body = alarm.label
-                
-                // WICHTIG: Custom Sound für Notifications
-                // Der Sound muss im Bundle sein und als .caf Format vorliegen
-                let soundFileName = alarm.soundName.replacingOccurrences(of: ".caf", with: "") + ".caf"
-                if Bundle.main.url(forResource: alarm.soundName.replacingOccurrences(of: ".caf", with: ""), withExtension: "caf") != nil {
-                    content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: soundFileName))
-                    if i == 0 {
-                        print("🔊 Notification Sound: \(soundFileName)")
-                    }
-                } else {
-                    // Fallback auf Standard-Alarm Sound
-                    content.sound = UNNotificationSound.default // [CRITICAL MESSAGING DEAKTIVIERT]
-                    if i == 0 {
-                        print("⚠️ Sound nicht gefunden (\(soundFileName)), benutze default")
-                    }
+                let now = Date()
+
+                guard let alarmDate = self.nextOneTimeAlarmDate(for: alarm, now: now) else {
+                    print("❌ Konnte Alarm-Datum nicht erstellen")
+                    return
                 }
 
-                content.categoryIdentifier = "ALARM_CATEGORY"
-                content.badge = NSNumber(value: i + 1)
-                content.interruptionLevel = .timeSensitive // Wichtige Benachrichtigung
-                
-                // WICHTIG: Speichere Alarm-ID in der Notification
-                content.userInfo = ["alarmID": alarm.id.uuidString, "alarmTime": alarm.time.timeIntervalSince1970]
-                
-                let offset = intervalSeconds * Double(i)
-                let finalInterval = timeInterval + offset
-                
-                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: finalInterval, repeats: false)
-                let request = UNNotificationRequest(
-                    identifier: "\(alarm.id.uuidString)-\(i)",
-                    content: content,
-                    trigger: trigger
-                )
-                
-                UNUserNotificationCenter.current().add(request) { error in
-                    if let error = error {
-                        print("❌ Fehler beim Planen (\(i)): \(error)")
-                    } else if i == 0 {
-                        print("✅ Benachrichtigung \(i) geplant in \(finalInterval)s mit Sound")
-                    }
-                }
-            }
-            }
-        } else {
-            // Wiederkehrender Alarm - für jeden ausgewählten Tag
-            let now = Date()
-            
-            for day in alarm.repeatDays {
-                var dayComponents = components
-                dayComponents.weekday = day
-                dayComponents.second = 0
-                
-                guard let nextAlarmDate = calendar.nextDate(after: now, matching: dayComponents, matchingPolicy: .nextTime) else {
-                    print("❌ Konnte nächstes Datum für Tag \(day) nicht finden")
-                    continue
-                }
-                
-                let timeInterval = nextAlarmDate.timeIntervalSince(now)
-                
-                print("📅 Wiederkehrender Alarm für Tag \(day): \(nextAlarmDate)")
+                let timeInterval = alarmDate.timeIntervalSince(now)
+                print("📅 Alarm geplant für: \(alarmDate)")
                 print("⏱️ In: \(timeInterval) Sekunden (\(timeInterval / 60) Minuten)")
-                
-                // Sicherstellen dass timeInterval positiv und mindestens 1 Sekunde ist
+
                 guard timeInterval >= 1 else {
-                    print("❌ TimeInterval zu kurz für Tag \(day): \(timeInterval)")
-                    continue
+                    print("❌ TimeInterval zu kurz: \(timeInterval)")
+                    return
                 }
-                
-                // Schedule multiple notifications for this day (begrenze auf scheduleCount)
+
                 if scheduleCount > 0 {
                     for i in 0..<scheduleCount {
-                    let content = UNMutableNotificationContent()
-                    content.title = "⏰ WakeFlow Wecker"
-                    content.body = alarm.label
-                    
-                    // WICHTIG: Custom Sound für Notifications
-                    let soundFileName = alarm.soundName.replacingOccurrences(of: ".caf", with: "") + ".caf"
-                    if Bundle.main.url(forResource: alarm.soundName.replacingOccurrences(of: ".caf", with: ""), withExtension: "caf") != nil {
-                        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: soundFileName))
-                        if i == 0 {
-                            print("🔊 Notification Sound: \(soundFileName)")
+                        let finalInterval = timeInterval + intervalSeconds * Double(i)
+                        let request = self.notificationRequest(
+                            for: alarm,
+                            identifier: "\(alarm.id.uuidString)-\(i)",
+                            badge: i + 1,
+                            timeInterval: finalInterval
+                        )
+
+                        UNUserNotificationCenter.current().add(request) { error in
+                            if let error = error {
+                                print("❌ Fehler beim Planen (\(i)): \(error)")
+                            } else if i == 0 {
+                                print("✅ Benachrichtigung \(i) geplant in \(finalInterval)s mit Sound")
+                            }
                         }
-                    } else {
-                        content.sound = UNNotificationSound.default // [CRITICAL MESSAGING DEAKTIVIERT]
-                        if i == 0 {
-                            print("⚠️ Sound nicht gefunden (\(soundFileName)), benutze default")
-                        }
+                    }
+                }
+            } else {
+                let now = Date()
+
+                for day in alarm.repeatDays {
+                    var dayComponents = components
+                    dayComponents.weekday = day
+                    dayComponents.second = 0
+
+                    guard let nextAlarmDate = calendar.nextDate(after: now, matching: dayComponents, matchingPolicy: .nextTime) else {
+                        print("❌ Konnte nächstes Datum für Tag \(day) nicht finden")
+                        continue
                     }
 
-                    content.categoryIdentifier = "ALARM_CATEGORY"
-                    content.badge = NSNumber(value: i + 1)
-                    content.interruptionLevel = .timeSensitive
-                    
-                    // WICHTIG: Speichere Alarm-ID in der Notification
-                    content.userInfo = ["alarmID": alarm.id.uuidString, "alarmTime": alarm.time.timeIntervalSince1970]
-                    
-                    let offset = intervalSeconds * Double(i)
-                    let finalInterval = timeInterval + offset
-                    
-                    let trigger = UNTimeIntervalNotificationTrigger(timeInterval: finalInterval, repeats: false)
-                    let request = UNNotificationRequest(
-                        identifier: "\(alarm.id.uuidString)-\(day)-\(i)",
-                        content: content,
-                        trigger: trigger
-                    )
-                    
-                    UNUserNotificationCenter.current().add(request) { error in
-                        if let error = error {
-                            print("❌ Fehler beim Planen (Tag \(day), \(i)): \(error)")
-                        } else if i == 0 {
-                            print("✅ Tag \(day), Benachrichtigung \(i) in \(finalInterval)s mit Sound")
+                    let timeInterval = nextAlarmDate.timeIntervalSince(now)
+                    print("📅 Wiederkehrender Alarm für Tag \(day): \(nextAlarmDate)")
+                    print("⏱️ In: \(timeInterval) Sekunden (\(timeInterval / 60) Minuten)")
+
+                    guard timeInterval >= 1 else {
+                        print("❌ TimeInterval zu kurz für Tag \(day): \(timeInterval)")
+                        continue
+                    }
+
+                    if scheduleCount > 0 {
+                        for i in 0..<scheduleCount {
+                            let finalInterval = timeInterval + intervalSeconds * Double(i)
+                            let request = self.notificationRequest(
+                                for: alarm,
+                                identifier: "\(alarm.id.uuidString)-\(day)-\(i)",
+                                badge: i + 1,
+                                timeInterval: finalInterval
+                            )
+
+                            UNUserNotificationCenter.current().add(request) { error in
+                                if let error = error {
+                                    print("❌ Fehler beim Planen (Tag \(day), \(i)): \(error)")
+                                } else if i == 0 {
+                                    print("✅ Tag \(day), Benachrichtigung \(i) in \(finalInterval)s mit Sound")
+                                }
+                            }
                         }
                     }
                 }
-                }
             }
-        }
-        
-        // BACKUP: Plane auch eine loopende Notification als Fallback
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.scheduleBackupNotification(for: alarm)
-        }
+
+            // BACKUP: Plane auch eine loopende Notification als Fallback
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.scheduleBackupNotification(for: alarm)
+            }
         }
     }
     
     func cancelAlarm(_ alarm: Alarm) {
         cancelSystemAlarm(id: alarm.id)
+        removeScheduledAlarmSnapshot(id: alarm.id)
 
         var identifiers: [String] = []
         
-        // All notification indices (0-59)
-        for i in 0..<60 {
+        // All notification indices (0-100)
+        for i in 0...100 {
             identifiers.append("\(alarm.id.uuidString)-\(i)")
             
             // All day-specific notifications
             for day in 1...7 {
                 identifiers.append("\(alarm.id.uuidString)-\(day)-\(i)")
             }
+            identifiers.append("backup-alarm-\(alarm.id.uuidString)-\(i)")
         }
         
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
@@ -1144,11 +1277,11 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     }
     
     // WICHTIG: Wird aufgerufen wenn User auf Notification tippt
-    func triggerAlarmFromNotification(alarmID: UUID) {
+    func triggerAlarmFromNotification(alarmID: UUID, userInfo: [AnyHashable: Any] = [:]) {
         print("🔔 Alarm-Trigger von Notification: \(alarmID)")
         
-        // Finde den Alarm in der Liste
-        guard let alarm = alarmsToCheck.first(where: { $0.id == alarmID }) else {
+        // Finde den Alarm in Memory, gespeicherten Weckern oder direkt aus dem Notification-Payload.
+        guard let alarm = resolveAlarm(id: alarmID, userInfo: userInfo) else {
             print("❌ Alarm nicht gefunden: \(alarmID)")
             return
         }
@@ -1293,7 +1426,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             return nil
         }
         
-        let volume = defaults.float(forKey: "activeAlarmVolume")
+        let volume = (defaults.object(forKey: "activeAlarmVolume") as? NSNumber)?.floatValue ?? 1.0
         
         // Erstelle Alarm-Objekt (mit minimalen Daten)
         let alarm = Alarm(
@@ -1408,49 +1541,53 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     /// Plane loopende Backup-Notification für Alarm
     func scheduleBackupNotification(for alarm: Alarm) {
         print("📢 Plane Backup-Notification für: \(alarm.label)")
-        
-        let content = UNMutableNotificationContent()
-        content.title = alarm.label
-        content.body = "Tippe um zu stoppen"
-        content.badge = NSNumber(value: 1)
-        
-        // Nutze den Custom-Sound des Alarms (als .caf)
-        let backupSoundFile = alarm.soundName.replacingOccurrences(of: ".caf", with: "") + ".caf"
-        if Bundle.main.url(forResource: alarm.soundName.replacingOccurrences(of: ".caf", with: ""), withExtension: "caf") != nil {
-            content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: backupSoundFile))
-        } else {
-            content.sound = UNNotificationSound(named: UNNotificationSoundName("dreamscape-alarm-clock.caf"))
+
+        func makeContent() -> UNMutableNotificationContent {
+            let content = UNMutableNotificationContent()
+            content.title = alarm.label
+            content.body = "Tippe um zu stoppen"
+            content.badge = NSNumber(value: 1)
+            content.sound = notificationSound(for: alarm)
+            content.interruptionLevel = .timeSensitive // [CRITICAL MESSAGING DEAKTIVIERT — war .critical]
+            content.relevanceScore = 1.0
+            content.categoryIdentifier = "ALARM_CATEGORY"
+            content.userInfo = notificationPayload(for: alarm)
+            return content
         }
-        
-        // [CRITICAL MESSAGING DEAKTIVIERT]
-        content.interruptionLevel = .timeSensitive // [CRITICAL MESSAGING DEAKTIVIERT — war .critical]
-        content.relevanceScore = 1.0
-        content.categoryIdentifier = "ALARM_CATEGORY"
-        content.userInfo = ["alarmID": alarm.id.uuidString]
-        
-        // Triggere zur Alarm-Zeit (täglich wenn Wiederholung)
-        let components = Calendar.current.dateComponents([.hour, .minute], from: alarm.time)
-        let shouldRepeat = !alarm.repeatDays.isEmpty
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: shouldRepeat)
-        
-        let request = UNNotificationRequest(
-            identifier: "backup-alarm-\(alarm.id)",
-            content: content,
-            trigger: trigger
-        )
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("❌ Backup-Notification Fehler: \(error)")
-            } else {
-                print("✅ Backup-Notification geplant: \(alarm.label) um \(components.hour ?? 0):\(String(format: "%02d", components.minute ?? 0))")
+
+        let baseComponents = Calendar.current.dateComponents([.hour, .minute], from: alarm.time)
+        let repeatDays: [Int?] = alarm.repeatDays.isEmpty ? [nil] : alarm.repeatDays.map { Optional.some($0) }
+
+        for day in repeatDays {
+            var components = baseComponents
+            if let day {
+                components.weekday = day
+            }
+
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: day != nil)
+            let identifier = day.map { "backup-alarm-\(alarm.id)-\($0)" } ?? "backup-alarm-\(alarm.id)"
+
+            let request = UNNotificationRequest(
+                identifier: identifier,
+                content: makeContent(),
+                trigger: trigger
+            )
+
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    print("❌ Backup-Notification Fehler: \(error)")
+                } else {
+                    print("✅ Backup-Notification geplant: \(alarm.label) um \(components.hour ?? 0):\(String(format: "%02d", components.minute ?? 0))")
+                }
             }
         }
     }
     
     /// Entferne Backup-Notification
     func cancelBackupNotification(for alarm: Alarm) {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["backup-alarm-\(alarm.id)"])
+        var identifiers = ["backup-alarm-\(alarm.id)"]
+        identifiers.append(contentsOf: (1...7).map { "backup-alarm-\(alarm.id)-\($0)" })
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
         print("🗑️ Backup-Notification entfernt: \(alarm.label)")
     }
     
@@ -1460,6 +1597,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         volumeEnforceTimer?.invalidate()
         notificationTimer?.invalidate()
         vibrationTimer?.invalidate()
+        alarmUpdatesTask?.cancel()
         
         // Remove Volume Observer
         AVAudioSession.sharedInstance().removeObserver(self, forKeyPath: "outputVolume")
