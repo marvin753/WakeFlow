@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>WakeFlow nutzt AlarmKit, um deinen Wecker zuverlässig auszulösen — auch auf dem Sperrbildschirm und wenn die App geschlossen ist.</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>WakeFlow benötigt Benachrichtigungen um dich zur richtigen Zeit mit deinem Wecker zu wecken.</string>
 	<key>UIBackgroundModes</key>

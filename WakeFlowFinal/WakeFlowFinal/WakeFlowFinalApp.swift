@@ -9,11 +9,18 @@ import SwiftUI
 import UserNotifications
 import AVFoundation
 import AlarmKit
+import OSLog
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
-        
+
+        // #region agent log
+        Task { @MainActor in
+            await PhantomDebug.dumpBootState(reason: "didFinishLaunchingWithOptions")
+        }
+        // #endregion
+
         // Clear all delivered notifications when app launches
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
         
@@ -22,9 +29,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             let audioSession = AVAudioSession.sharedInstance()
             try audioSession.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try audioSession.setActive(true)
-            print("✅ Audio Session für Background aktiv")
+            Logger.lifecycle.info("Audio Session für Background aktiv")
         } catch {
-            print("❌ Audio Session Fehler: \(error)")
+            Logger.lifecycle.error("Audio Session Fehler: \(error.localizedDescription, privacy: .public)")
         }
         
         // WICHTIG: AlarmKit Permission anfragen
@@ -34,6 +41,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         // Prüfe ob es geplante Alarme gibt und starte Background Audio wenn nötig
         BackgroundAlarmManager.shared.prepareForBackgroundAlarms()
+
+#if DEBUG
+        Task { @MainActor in
+            AlarmKitSpikeForegroundVerifier.shared.register()
+        }
+#endif
         
         return true
     }
@@ -45,18 +58,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             let state = alarmManager.authorizationState
 
             if state == .authorized {
-                print("✅ AlarmKit Zugriff bereits erlaubt")
+                Logger.alarm.info("AlarmKit Zugriff bereits erlaubt")
                 return
             }
 
             let newState = try await alarmManager.requestAuthorization()
             if newState == .authorized {
-                print("✅ AlarmKit Zugriff erlaubt")
+                Logger.alarm.info("AlarmKit Zugriff erlaubt")
             } else {
-                print("⚠️ AlarmKit Zugriff nicht erlaubt: \(newState)")
+                Logger.alarm.notice("AlarmKit Zugriff nicht erlaubt: \(String(describing: newState), privacy: .public)")
             }
         } catch {
-            print("❌ Fehler bei AlarmKit Anfrage: \(error)")
+            Logger.alarm.error("Fehler bei AlarmKit Anfrage: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -69,7 +82,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         if let alarmIDString = userInfo["alarmID"] as? String,
            let alarmID = UUID(uuidString: alarmIDString) {
             
-            print("🔔 Notification wird gezeigt für Alarm: \(alarmID)")
+            Logger.notifications.notice("Notification wird gezeigt für Alarm: \(alarmID.uuidString, privacy: .public)")
             
             DispatchQueue.main.async {
                 if !BackgroundAlarmManager.shared.isPlaying {
@@ -93,7 +106,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         if let alarmIDString = userInfo["alarmID"] as? String,
            let alarmID = UUID(uuidString: alarmIDString) {
             
-            print("🔔 Notification erhalten für Alarm: \(alarmID)")
+            Logger.notifications.notice("Notification erhalten für Alarm: \(alarmID.uuidString, privacy: .public)")
             
             DispatchQueue.main.async {
                 BackgroundAlarmManager.shared.triggerAlarmFromNotification(alarmID: alarmID, userInfo: userInfo)
@@ -101,7 +114,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         
         if response.actionIdentifier == "STOP_ALARM" || response.actionIdentifier == UNNotificationDefaultActionIdentifier {
-            print("📱 App geöffnet per Notification → Mond-Screen erscheint (Audio läuft weiter)")
+            Logger.lifecycle.notice("App geöffnet per Notification → Mond-Screen erscheint (Audio läuft weiter)")
         }
         
         completionHandler()
@@ -117,9 +130,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         // Der User muss in der App den Stop-Button drücken
         
         if BackgroundAlarmManager.shared.isPlaying {
-            print("⏰ App im Vordergrund - Alarm läuft weiter (wie Alarmy!)")
+            Logger.lifecycle.notice("App im Vordergrund - Alarm läuft weiter (wie Alarmy!)")
         } else {
-            print("✅ App im Vordergrund - kein aktiver Alarm")
+            Logger.lifecycle.info("App im Vordergrund - kein aktiver Alarm")
         }
     }
 }

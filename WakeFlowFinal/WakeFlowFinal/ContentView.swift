@@ -15,6 +15,7 @@ import CoreNFC
 #endif
 import AlarmKit
 import ActivityKit
+import OSLog
 
 
 // MARK: - Collection Extension (Safe Array Access)
@@ -23,6 +24,224 @@ extension Collection {
         return indices.contains(index) ? self[index] : nil
     }
 }
+
+// #region agent log
+// MARK: - Phantom Debug Logger (TEMP - debug session d6bfee)
+enum PhantomDebug {
+    static let sessionId = "d6bfee"
+    static let logFileName = "wakeflow-phantom-debug.log"
+    static let lock = NSLock()
+
+    static var logFileURL: URL? {
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
+        return docs.appendingPathComponent(logFileName)
+    }
+
+    static func log(_ location: String, _ message: String, data: [String: Any] = [:]) {
+        let now = Date()
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let timestamp = iso.string(from: now)
+        let consoleLine = "🔍 PHANTOM-DEBUG [\(timestamp)] [\(location)] \(message) | data=\(data)"
+        Logger.criticalAlerts.debug("\(consoleLine, privacy: .public)")
+
+        // Persist to file (survives app kills, readable via in-app viewer or Xcode container download)
+        guard let url = logFileURL else { return }
+        let line = consoleLine + "\n"
+        guard let bytes = line.data(using: .utf8) else { return }
+
+        lock.lock()
+        defer { lock.unlock() }
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: url.path) {
+            try? bytes.write(to: url)
+        } else if let handle = try? FileHandle(forWritingTo: url) {
+            try? handle.seekToEnd()
+            try? handle.write(contentsOf: bytes)
+            try? handle.close()
+        }
+    }
+
+    static func readAllLogs() -> String {
+        guard let url = logFileURL,
+              let data = try? Data(contentsOf: url),
+              let str = String(data: data, encoding: .utf8) else {
+            return "(no logs yet)"
+        }
+        return str
+    }
+
+    static func clearLogs() {
+        guard let url = logFileURL else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    @MainActor
+    static func dumpBootState(reason: String) async {
+        log("boot", "boot dump start: \(reason)", data: ["now": Date().description])
+
+        // 1) UserDefaults inspection
+        let defaults = UserDefaults.standard
+        let savedAlarmsCount: Int = {
+            guard let data = defaults.data(forKey: "savedAlarms"),
+                  let alarms = try? JSONDecoder().decode([Alarm].self, from: data) else { return -1 }
+            for a in alarms {
+                log("boot.savedAlarms", "alarm",
+                    data: [
+                        "id": a.id.uuidString,
+                        "time": a.time.description,
+                        "isEnabled": a.isEnabled,
+                        "label": a.label,
+                        "repeatDays": Array(a.repeatDays).sorted(),
+                        "sound": a.soundName
+                    ])
+            }
+            return alarms.count
+        }()
+        let snapshotAlarmsCount: Int = {
+            guard let data = defaults.data(forKey: "scheduledAlarmSnapshots"),
+                  let alarms = try? JSONDecoder().decode([Alarm].self, from: data) else { return -1 }
+            for a in alarms {
+                log("boot.scheduledAlarmSnapshots", "snapshot",
+                    data: [
+                        "id": a.id.uuidString,
+                        "time": a.time.description,
+                        "isEnabled": a.isEnabled,
+                        "label": a.label,
+                        "repeatDays": Array(a.repeatDays).sorted()
+                    ])
+            }
+            return alarms.count
+        }()
+        let activeAlarmID = defaults.string(forKey: "activeAlarmID") ?? "<nil>"
+        let activeAlarmLabel = defaults.string(forKey: "activeAlarmLabel") ?? "<nil>"
+        let activeAlarmStart = defaults.object(forKey: "activeAlarmStartTime") as? Date
+        let openMarkerID = defaults.string(forKey: WakeFlowAlarmKitLaunchMarker.alarmIDKey) ?? "<nil>"
+        let openMarkerTS = defaults.object(forKey: WakeFlowAlarmKitLaunchMarker.timestampKey) as? TimeInterval
+        let spikePendingID = defaults.string(forKey: "alarmKitSpikePendingAlarmID") ?? "<nil>"
+        let spikeActiveType = defaults.string(forKey: "alarmKitSpikeActiveAlarmKitSpikeType") ?? "<nil>"
+        let plainPendingID = defaults.string(forKey: "plainNotificationSpikePendingRequestID") ?? "<nil>"
+        let plainPendingFire = defaults.object(forKey: "plainNotificationSpikePendingFireDate") as? TimeInterval
+
+        log("boot.userDefaults", "summary", data: [
+            "savedAlarmsCount": savedAlarmsCount,
+            "scheduledSnapshotsCount": snapshotAlarmsCount,
+            "activeAlarmID": activeAlarmID,
+            "activeAlarmLabel": activeAlarmLabel,
+            "activeAlarmStart": activeAlarmStart?.description ?? "<nil>",
+            "openMarkerAlarmID": openMarkerID,
+            "openMarkerTimestamp": openMarkerTS ?? -1,
+            "spikePendingAlarmID": spikePendingID,
+            "spikeActiveType": spikeActiveType,
+            "plainSpikePendingID": plainPendingID,
+            "plainSpikePendingFire": plainPendingFire ?? -1
+        ])
+
+        // 2) AlarmKit pending alarms (iOS 26+)
+        if #available(iOS 26.0, *) {
+            do {
+                let alarms = try AlarmKit.AlarmManager.shared.alarms
+                log("boot.alarmKit", "alarmKit count", data: ["count": alarms.count])
+
+                // Build expected enabled IDs from savedAlarms
+                let expectedEnabled: Set<UUID> = {
+                    guard let data = defaults.data(forKey: "savedAlarms"),
+                          let saved = try? JSONDecoder().decode([Alarm].self, from: data) else { return [] }
+                    return Set(saved.filter { $0.isEnabled }.map { $0.id })
+                }()
+
+                for a in alarms {
+                    let isExpected = expectedEnabled.contains(a.id)
+                    log("boot.alarmKit", isExpected ? "alarm (expected)" : "alarm (STALE - not in saved+enabled)",
+                        data: [
+                            "id": a.id.uuidString,
+                            "state": String(describing: a.state),
+                            "schedule": String(describing: a.schedule),
+                            "isExpected": isExpected
+                        ])
+                }
+                // Detect missing: alarm we expect to have scheduled but isn't in AlarmKit
+                let actualIDs = Set(alarms.map { $0.id })
+                let missing = expectedEnabled.subtracting(actualIDs)
+                if !missing.isEmpty {
+                    log("boot.alarmKit", "MISSING: enabled alarms not present in AlarmKit",
+                        data: ["count": missing.count, "ids": missing.map { $0.uuidString }])
+                }
+            } catch {
+                log("boot.alarmKit", "alarmKit query failed", data: ["error": error.localizedDescription])
+            }
+        }
+
+        // 3) Pending UNNotificationRequests
+        let pending = await UNUserNotificationCenter.current().pendingNotificationRequests()
+        log("boot.unNotifications", "pending count", data: ["count": pending.count])
+        for req in pending {
+            log("boot.unNotifications", "pending",
+                data: [
+                    "identifier": req.identifier,
+                    "title": req.content.title,
+                    "trigger": String(describing: req.trigger),
+                    "userInfo": String(describing: req.content.userInfo)
+                ])
+        }
+
+        // 4) Delivered notifications
+        let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
+        log("boot.unNotifications", "delivered count", data: ["count": delivered.count])
+        for n in delivered {
+            log("boot.unNotifications", "delivered",
+                data: [
+                    "identifier": n.request.identifier,
+                    "title": n.request.content.title,
+                    "deliveredAt": n.date.description,
+                    "userInfo": String(describing: n.request.content.userInfo)
+                ])
+        }
+
+        log("boot", "boot dump end")
+    }
+}
+
+struct PhantomLogView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var logText: String = "Loading..."
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                Text(logText)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .textSelection(.enabled)
+            }
+            .navigationTitle("Phantom Log")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Schließen") { dismiss() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    HStack {
+                        if let url = PhantomDebug.logFileURL {
+                            ShareLink(item: url) {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                        }
+                        Button("Leeren") {
+                            PhantomDebug.clearLogs()
+                            logText = PhantomDebug.readAllLogs()
+                        }
+                    }
+                }
+            }
+            .onAppear { logText = PhantomDebug.readAllLogs() }
+        }
+    }
+}
+// #endregion
 
 // MARK: - Alarm Model
 struct Alarm: Identifiable, Hashable, Codable {
@@ -87,14 +306,14 @@ class NFCAlarmReader: NSObject, ObservableObject, NFCNDEFReaderSessionDelegate {
 
     func startScanning(actionType: NFCActionType = .deactivate) {
         self.actionType = actionType
-        print("🔵 startScanning() aufgerufen")
-        print("📡 NFCNDEFReaderSession.readingAvailable: \(NFCNDEFReaderSession.readingAvailable)")
+        Logger.nfc.debug("startScanning() aufgerufen")
+        Logger.nfc.debug("NFCNDEFReaderSession.readingAvailable: \(NFCNDEFReaderSession.readingAvailable, privacy: .public)")
 
         guard NFCNDEFReaderSession.readingAvailable else {
             DispatchQueue.main.async {
                 self.statusMessage = "NFC wird auf diesem\nGerät nicht unterstützt"
             }
-            print("❌ NFC nicht verfügbar auf diesem Gerät")
+            Logger.nfc.error("NFC nicht verfügbar auf diesem Gerät")
             return
         }
 
@@ -121,7 +340,7 @@ class NFCAlarmReader: NSObject, ObservableObject, NFCNDEFReaderSessionDelegate {
 
         nfcSession?.begin()
 
-        print("📡 ✅ NFC Scanner gestartet!")
+        Logger.nfc.info("NFC Scanner gestartet")
     }
 
     func readerSession(_ session: NFCNDEFReaderSession, didDetectNDEFs messages: [NFCNDEFMessage]) {
@@ -131,9 +350,9 @@ class NFCAlarmReader: NSObject, ObservableObject, NFCNDEFReaderSessionDelegate {
             self.statusMessage = "✅ NFC-Chip erkannt!"
 
             if self.actionType == .activate {
-                print("✅ NFC-Tag erkannt - Alarm wird aktiviert!")
+                Logger.nfc.notice("NFC-Tag erkannt - Alarm wird aktiviert")
             } else {
-                print("✅ NFC-Tag erkannt - Alarm wird gestoppt!")
+                Logger.nfc.notice("NFC-Tag erkannt - Alarm wird gestoppt")
             }
         }
 
@@ -151,15 +370,15 @@ class NFCAlarmReader: NSObject, ObservableObject, NFCNDEFReaderSessionDelegate {
         if let nfcError = error as? NFCReaderError {
             switch nfcError.code {
             case .readerSessionInvalidationErrorUserCanceled:
-                print("⚠️ NFC Scan abgebrochen")
+                Logger.nfc.notice("NFC Scan abgebrochen")
                 DispatchQueue.main.async {
                     self.statusMessage = "Scan abgebrochen"
                 }
             case .readerSessionInvalidationErrorFirstNDEFTagRead:
                 // Tag wurde gelesen - das ist Erfolg!
-                print("✅ NFC-Tag erfolgreich gelesen")
+                Logger.nfc.info("NFC-Tag erfolgreich gelesen")
             default:
-                print("❌ NFC Fehler: \(error.localizedDescription)")
+                Logger.nfc.error("NFC Fehler: \(error.localizedDescription, privacy: .public)")
                 DispatchQueue.main.async {
                     self.statusMessage = "Fehler beim Scannen"
                 }
@@ -192,7 +411,7 @@ class NFCAlarmReader: NSObject, ObservableObject, NFCNDEFReaderSessionDelegate {
                 DispatchQueue.main.async {
                     self.isScanned = true
                     self.statusMessage = "✅ NFC-Chip erkannt!"
-                    print("✅ NFC-Tag gescannt - Alarm wird gestoppt!")
+                    Logger.nfc.notice("NFC-Tag gescannt - Alarm wird gestoppt")
                 }
 
                 session.alertMessage = "✅ Erkannt! Alarm wird gestoppt..."
@@ -229,7 +448,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     private var firedLocalAlarmKeys = Set<String>()
     private let localAlarmFireWindow: TimeInterval = 90
     private let scheduledAlarmSnapshotsKey = "scheduledAlarmSnapshots"
-    
+
     override init() {
         super.init()
         setupAudioSession()
@@ -252,9 +471,9 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             // WICHTIG: playback mit duckOthers - andere Apps werden leiser, aber wir können spielen
             try audioSession.setCategory(.playback, mode: .default, options: [.duckOthers])
             try audioSession.setActive(true, options: [])
-            print("✅ Audio Session konfiguriert (VOLLE POWER)")
+            Logger.alarm.info("Audio Session konfiguriert (VOLLE POWER)")
         } catch {
-            print("❌ Audio Session Fehler: \(error)")
+            Logger.alarm.error("Audio Session Fehler: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -266,30 +485,30 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         do {
             try audioSession.setCategory(.playback, mode: .default, options: [.duckOthers])
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
-            print("✅ Audio Session aktiviert (duckOthers)")
+            Logger.alarm.info("Audio Session aktiviert (duckOthers)")
             return true
         } catch {
-            print("⚠️ duckOthers fehlgeschlagen: \(error.localizedDescription)")
+            Logger.alarm.notice("duckOthers fehlgeschlagen: \(error.localizedDescription, privacy: .public)")
         }
         
         // Versuch 2: Mit interruptSpokenAudioAndMixWithOthers (unterbricht andere Audio-Apps)
         do {
             try audioSession.setCategory(.playback, mode: .default, options: [.interruptSpokenAudioAndMixWithOthers])
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
-            print("✅ Audio Session aktiviert (interruptSpokenAudioAndMixWithOthers)")
+            Logger.alarm.info("Audio Session aktiviert (interruptSpokenAudioAndMixWithOthers)")
             return true
         } catch {
-            print("⚠️ interruptSpokenAudioAndMixWithOthers fehlgeschlagen: \(error.localizedDescription)")
+            Logger.alarm.notice("interruptSpokenAudioAndMixWithOthers fehlgeschlagen: \(error.localizedDescription, privacy: .public)")
         }
         
         // Versuch 3: Ohne Optionen (letzter Versuch)
         do {
             try audioSession.setCategory(.playback, mode: .default, options: [])
             try audioSession.setActive(true, options: [])
-            print("✅ Audio Session aktiviert (ohne Optionen)")
+            Logger.alarm.info("Audio Session aktiviert (ohne Optionen)")
             return true
         } catch {
-            print("❌ Alle Audio Session Aktivierungsversuche fehlgeschlagen: \(error.localizedDescription)")
+            Logger.alarm.error("Alle Audio Session Aktivierungsversuche fehlgeschlagen: \(error.localizedDescription, privacy: .public)")
             return false
         }
     }
@@ -306,7 +525,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             context: nil
         )
         
-        print("✅ Volume Observer aktiviert")
+        Logger.alarm.debug("Volume Observer aktiviert")
     }
     
     override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
@@ -321,7 +540,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     private func enforceMaximumVolume() {
         // Setze Player immer auf Maximum, egal was System-Volume ist
         audioPlayer?.volume = 1.0
-        print("🔊 Lautstärke auf MAXIMUM erzwungen!")
+        Logger.alarm.debug("Lautstärke auf MAXIMUM erzwungen")
     }
     
     func startMonitoring() {
@@ -329,7 +548,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             self?.checkAlarms()
         }
         RunLoop.current.add(checkTimer!, forMode: .common)
-        print("✅ Alarm-Überwachung gestartet")
+        Logger.alarm.info("Alarm-Überwachung gestartet")
     }
     
     var alarmsToCheck: [Alarm] = []
@@ -435,7 +654,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         if Bundle.main.url(forResource: alarm.soundName.replacingOccurrences(of: ".caf", with: ""), withExtension: "caf") != nil {
             return UNNotificationSound(named: UNNotificationSoundName(rawValue: soundFileName))
         }
-        print("⚠️ Notification Sound nicht gefunden (\(soundFileName)), nutze default")
+        Logger.notifications.notice("Notification Sound nicht gefunden (\(soundFileName, privacy: .public)), nutze default")
         return .default
     }
 
@@ -487,19 +706,23 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     }
     
     private func checkAlarms() {
+        if #available(iOS 26.0, *) {
+            return
+        }
+
         let now = Date()
         let calendar = Calendar.current
         let currentComponents = calendar.dateComponents([.hour, .minute, .second, .weekday], from: now)
         
         // Debug: Zeige aktuelle Zeit
         if currentComponents.second == 0 {
-            print("⏰ Checking alarms at \(currentComponents.hour ?? 0):\(currentComponents.minute ?? 0) Weekday: \(currentComponents.weekday ?? 0)")
-            print("⏰ Active alarms count: \(alarmsToCheck.filter { $0.isEnabled }.count)")
+            Logger.alarm.debug("Checking alarms at \(currentComponents.hour ?? 0, privacy: .public):\(currentComponents.minute ?? 0, privacy: .public) Weekday: \(currentComponents.weekday ?? 0, privacy: .public)")
+            Logger.alarm.debug("Active alarms count: \(self.alarmsToCheck.filter { $0.isEnabled }.count, privacy: .public)")
         }
         
         for alarm in alarmsToCheck where alarm.isEnabled {
             if shouldTriggerLocalAlarm(alarm, now: now), currentAlarmID != alarm.id {
-                print("🔔 ALARM TRIGGERED: \(alarm.label)")
+                Logger.alarm.notice("ALARM TRIGGERED: \(alarm.label, privacy: .public)")
                 playAlarm(alarm)
                 currentAlarmID = alarm.id
             }
@@ -507,14 +730,27 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     }
     
     func playAlarm(_ alarm: Alarm, shouldNotify: Bool = true) {
-        print("🎵 Versuche Sound zu laden: \(alarm.soundName)")
-        
+        // #region agent log
+        let symbols = Thread.callStackSymbols.prefix(8).joined(separator: "\n")
+        PhantomDebug.log("playAlarm", "ENTER",
+            data: [
+                "alarmID": alarm.id.uuidString,
+                "label": alarm.label,
+                "alarmTime": alarm.time.description,
+                "now": Date().description,
+                "isAlreadyPlaying": isPlaying,
+                "shouldNotify": shouldNotify,
+                "callStack": symbols
+            ])
+        // #endregion
+        Logger.alarm.info("Versuche Sound zu laden: \(alarm.soundName, privacy: .public)")
+
         guard let soundURL = Bundle.main.url(
             forResource: alarm.soundName.replacingOccurrences(of: ".caf", with: ""),
             withExtension: "caf"
         ) else {
-            print("❌ Sound nicht gefunden: \(alarm.soundName)")
-            print("❌ Gesuchter Dateiname: \(alarm.soundName.replacingOccurrences(of: ".caf", with: ""))")
+            Logger.alarm.error("Sound nicht gefunden: \(alarm.soundName, privacy: .public)")
+            Logger.alarm.error("Gesuchter Dateiname: \(alarm.soundName.replacingOccurrences(of: ".caf", with: ""), privacy: .public)")
             return
         }
         
@@ -527,9 +763,9 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         // Speichere Alarm-Status persistent (für App-Neustart nach Kill)
         saveActiveAlarmState(alarm)
         
-        print("🔊 Alarm startet: \(alarm.label)")
-        print("✅ Sound geladen: \(soundURL.lastPathComponent)")
-        print("🔊 Ziel-Lautstärke: \(Int(targetVolume * 100))% (wird erzwungen!)")
+        Logger.alarm.notice("Alarm startet: \(alarm.label, privacy: .public)")
+        Logger.alarm.info("Sound geladen: \(soundURL.lastPathComponent, privacy: .public)")
+        Logger.alarm.info("Ziel-Lautstärke: \(Int(self.targetVolume * 100), privacy: .public)% (wird erzwungen)")
         
         // 1. Starte Audio ZUERST (das ist dein Sound!)
         playSoundLoop()
@@ -540,14 +776,12 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         // 3. Starte kontinuierliche Vibration
         startVibration()
         
-        // 4. Sende HIGH PRIORITY Notification nur im lokalen Fallback-Pfad.
-        if shouldNotify {
-            sendSystemAlarmNotification(for: alarm)
-        }
+        // Notification-Spam ist ab der AlarmKit-Migration deaktiviert.
+        // shouldNotify bleibt vorerst in der Signatur, damit bestehende Call-Sites klein bleiben.
         
         // Stoppe nach 10 Minuten automatisch
         stopTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: false) { [weak self] _ in
-            print("⏱️ 10 Minuten vorbei - Alarm stoppt automatisch")
+            Logger.alarm.notice("10 Minuten vorbei - Alarm stoppt automatisch")
             self?.stopAlarm()
         }
     }
@@ -562,11 +796,11 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             guard let self = self, self.isPlaying else { return }
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.error) // Kräftige Vibration wie bei Fehler
-            print("📳 Vibration ausgelöst")
+            Logger.alarm.debug("Vibration ausgelöst")
         }
         
         RunLoop.current.add(vibrationTimer!, forMode: .common)
-        print("✅ Kontinuierliche Vibration gestartet (alle 2s)")
+        Logger.alarm.info("Kontinuierliche Vibration gestartet (alle 2s)")
     }
     
     private func startVolumeEnforcement() {
@@ -589,8 +823,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             // 1. Prüfe System-Volume und erzwinge es IMMER auf scaledTargetVolume
             let currentSystemVolume = AVAudioSession.sharedInstance().outputVolume
             if currentSystemVolume < minAcceptableVolume {
-                print("🔊 System-Volume geändert: \(Int(currentSystemVolume * 100))% → Setze zurück auf \(Int(scaledTargetVolume * 100))%!")
-                print("   (Intern: \(Int(self.targetVolume * 100))%)")
+                Logger.alarm.debug("System-Volume geändert: \(Int(currentSystemVolume * 100), privacy: .public)% → zurück auf \(Int(scaledTargetVolume * 100), privacy: .public)% (Intern \(Int(self.targetVolume * 100), privacy: .public)%)")
                 self.setSystemVolume(scaledTargetVolume)
             }
             
@@ -599,16 +832,16 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                 // Stelle sicher dass Player-Volume IMMER auf 1.0 bleibt
                 if player.volume < 1.0 {
                     player.volume = 1.0
-                    print("🔊 Player-Volume zurückgesetzt auf MAXIMUM (1.0)!")
+                    Logger.alarm.debug("Player-Volume zurückgesetzt auf MAXIMUM (1.0)")
                 }
                 
                 // 3. Prüfe ob Player noch spielt
                 if !player.isPlaying {
-                    print("⚠️ Player gestoppt - aktiviere Audio Session und starte neu!")
+                    Logger.alarm.notice("Player gestoppt - aktiviere Audio Session und starte neu")
                     // Versuche Audio Session aggressiv zu aktivieren bevor wir neu starten
                     _ = self.forceActivateAudioSession()
                     let restarted = player.play()
-                    print("⚠️ Player Neustart: \(restarted ? "✅ Erfolgreich" : "❌ Fehlgeschlagen")")
+                    Logger.alarm.notice("Player Neustart: \(restarted ? "Erfolgreich" : "Fehlgeschlagen", privacy: .public)")
                 }
             }
             
@@ -622,9 +855,9 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         }
         
         RunLoop.current.add(volumeEnforceTimer!, forMode: .common)
-        print("✅ Volume-Enforcement Timer gestartet (alle 0.05s)")
-        print("🔒 Interne Lautstärke: \(Int(targetVolume * 100))% (0.25-0.8)")
-        print("🔒 System-Volume erscheint als: \(Int(scaledVolume * 100))% (skaliert auf 0-1.0)")
+        Logger.alarm.info("Volume-Enforcement Timer gestartet (alle 0.05s)")
+        Logger.alarm.debug("Interne Lautstärke: \(Int(self.targetVolume * 100), privacy: .public)% (0.25-0.8)")
+        Logger.alarm.debug("System-Volume erscheint als: \(Int(scaledVolume * 100), privacy: .public)% (skaliert auf 0-1.0)")
     }
     
     private func setSystemVolume(_ volume: Float) {
@@ -634,11 +867,12 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
             if let slider = volumeView.subviews.first(where: { $0 is UISlider }) as? UISlider {
                 slider.value = volume
-                print("🔊 System-Volume gesetzt auf: \(volume)")
+                Logger.alarm.debug("System-Volume gesetzt auf: \(volume, privacy: .public)")
             }
         }
     }
     
+    // LEGACY — nicht mehr verwendet ab AlarmKit-Migration. Wird in Phase 2 entfernt.
     private func sendSystemAlarmNotification(for alarm: Alarm) {
         // Reset counter
         notificationCount = 0
@@ -656,22 +890,22 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             self.sendSingleNotification(for: alarm, count: self.notificationCount)
             self.notificationCount += 1
             
-            print("📳 Notification #\(self.notificationCount) gesendet")
+            Logger.notifications.debug("Notification #\(self.notificationCount, privacy: .public) gesendet")
             
             // Stoppe nach 100 Notifications (5 Minuten)
             if self.notificationCount >= 100 {
                 self.notificationTimer?.invalidate()
                 self.notificationTimer = nil
-                print("⏹️ Notification Timer gestoppt (100 erreicht)")
+                Logger.notifications.notice("Notification Timer gestoppt (100 erreicht)")
             }
         }
         
         RunLoop.current.add(notificationTimer!, forMode: .common)
-        print("✅ Notification Timer gestartet (alle 3s)")
-        print("📱 Erste Notification SOFORT gesendet!")
+        Logger.notifications.info("Notification Timer gestartet (alle 3s)")
+        Logger.notifications.info("Erste Notification SOFORT gesendet")
     }
     
-    // Scheduled Notifications als Backup (funktionieren auch wenn App gekillt wird)
+    // LEGACY — nicht mehr verwendet ab AlarmKit-Migration. Wird in Phase 2 entfernt.
     private func scheduleBackupNotifications(for alarm: Alarm) {
         // Entferne nur vorherige Backup-Notifications für genau diesen Alarm
         let center = UNUserNotificationCenter.current()
@@ -693,7 +927,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             let scheduleCount = min(desired, availableSlots)
 
             if scheduleCount == 0 {
-                print("⚠️ Keine verfügbaren Slots für Backup-Notifications (Limit erreicht)")
+                Logger.notifications.notice("Keine verfügbaren Slots für Backup-Notifications (Limit erreicht)")
                 return
             }
 
@@ -719,21 +953,22 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
                 center.add(request) { error in
                     if let error = error {
-                        print("❌ Backup Notification \(i) Fehler: \(error)")
+                        Logger.notifications.error("Backup Notification \(i, privacy: .public) Fehler: \(error.localizedDescription, privacy: .public)")
                     } else if i == 1 || i == scheduleCount {
-                        print("✅ Backup Notification \(i) geplant für +\(timeInterval)s")
+                        Logger.notifications.info("Backup Notification \(i, privacy: .public) geplant für +\(timeInterval, privacy: .public)s")
                     }
                 }
             }
 
-            print("✅ \(scheduleCount) Backup Notifications geplant (Sound + Vibration)")
+            Logger.notifications.info("\(scheduleCount, privacy: .public) Backup Notifications geplant (Sound + Vibration)")
         }
     }
     
+    // LEGACY — nicht mehr verwendet ab AlarmKit-Migration. Wird in Phase 2 entfernt.
     private func sendSingleNotification(for alarm: Alarm, count: Int) {
         // Wenn pausiert, sende keine Notification
         guard !notificationsPaused else {
-            print("⏸️ Notifications sind pausiert (App ist offen)")
+            Logger.notifications.debug("Notifications sind pausiert (App ist offen)")
             return
         }
         
@@ -763,18 +998,18 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                print("❌ Notification \(count) Fehler: \(error)")
+                Logger.notifications.error("Notification \(count, privacy: .public) Fehler: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
     
     private func playSoundLoop() {
         guard let soundURL = currentSoundURL else { return }
-        
+
         // WICHTIG: Audio Session AGGRESSIV aktivieren bevor Player erstellt wird
         let sessionActivated = forceActivateAudioSession()
         if !sessionActivated {
-            print("⚠️ Audio Session konnte nicht aktiviert werden - versuche trotzdem zu spielen")
+            Logger.alarm.notice("Audio Session konnte nicht aktiviert werden - versuche trotzdem zu spielen")
         }
         
         do {
@@ -794,13 +1029,13 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             let success = audioPlayer?.play() ?? false
             
             if success {
-                print("▶️ Sound spielt in ENDLOS LOOP mit Player-Volume: 1.0 (MAX)")
-                print("🔒 System-Lautstärke: \(Int(targetVolume * 100))% (wird ERZWUNGEN!)")
+                Logger.alarm.notice("Sound spielt in ENDLOS LOOP mit Player-Volume 1.0 (MAX)")
+                Logger.alarm.debug("System-Lautstärke: \(Int(self.targetVolume * 100), privacy: .public)% (wird ERZWUNGEN)")
             } else {
-                print("❌ Sound konnte nicht abgespielt werden - Audio Session Status: \(sessionActivated)")
+                Logger.alarm.error("Sound konnte nicht abgespielt werden - Audio Session Status: \(sessionActivated, privacy: .public)")
             }
         } catch {
-            print("❌ Audio Player Fehler: \(error.localizedDescription)")
+            Logger.alarm.error("Audio Player Fehler: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -826,7 +1061,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         // Stelle System-Volume wieder her
         if originalSystemVolume > 0 {
             setSystemVolume(originalSystemVolume)
-            print("🔊 System-Volume wiederhergestellt: \(originalSystemVolume)")
+            Logger.alarm.debug("System-Volume wiederhergestellt: \(self.originalSystemVolume, privacy: .public)")
         }
         
         isPlaying = false
@@ -868,7 +1103,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             let center = UNUserNotificationCenter.current()
             center.removePendingNotificationRequests(withIdentifiers: knownIdentifiers)
             center.removeDeliveredNotifications(withIdentifiers: knownIdentifiers)
-            print("🗑️ \(knownIdentifiers.count) bekannte Notification-IDs synchron entfernt")
+            Logger.notifications.debug("\(knownIdentifiers.count, privacy: .public) bekannte Notification-IDs synchron entfernt")
 
             // Phase 2 — Asynchronous catch-all for timestamp-based IDs (sendSingleNotification)
             center.getPendingNotificationRequests { requests in
@@ -877,7 +1112,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                     .map { $0.identifier }
                 if !leftover.isEmpty {
                     center.removePendingNotificationRequests(withIdentifiers: leftover)
-                    print("🗑️ \(leftover.count) weitere pending Notifications entfernt (catch-all via UUID)")
+                    Logger.notifications.debug("\(leftover.count, privacy: .public) weitere pending Notifications entfernt (catch-all via UUID)")
                 }
             }
         }
@@ -897,21 +1132,21 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         notificationsPaused = false // Reset Pause-Status
         targetVolume = 1.0 // Reset auf Standard
         
-        print("🛑 Alarm gestoppt (Audio + Notifications + Volume-Enforcement)")
+        Logger.alarm.notice("Alarm gestoppt (Audio + Notifications + Volume-Enforcement)")
     }
     
     // Pausiere Notifications wenn App geöffnet wird
     func pauseNotifications() {
         guard isPlaying else { return }
         notificationsPaused = true
-        print("⏸️ Notifications pausiert (App wurde geöffnet)")
+        Logger.notifications.debug("Notifications pausiert (App wurde geöffnet)")
     }
     
     // Setze Notifications fort wenn App geschlossen wird
     func resumeNotifications() {
         guard isPlaying else { return }
         notificationsPaused = false
-        print("▶️ Notifications fortgesetzt (App wurde geschlossen)")
+        Logger.notifications.debug("Notifications fortgesetzt (App wurde geschlossen)")
     }
 
     func shouldShowAppKeepAliveWarning() -> Bool {
@@ -942,14 +1177,36 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
     @available(iOS 26.0, *)
     private func handleSystemAlarmUpdates(_ systemAlarms: [AlarmKit.Alarm]) {
+        // #region agent log
+        PhantomDebug.log("handleSystemAlarmUpdates", "update batch",
+            data: [
+                "count": systemAlarms.count,
+                "currentAlarmID": currentAlarmID?.uuidString ?? "<nil>",
+                "now": Date().description,
+                "ids": systemAlarms.map { "\($0.id.uuidString):\(String(describing: $0.state))" }
+            ])
+        // #endregion
         for systemAlarm in systemAlarms where systemAlarm.state == .alerting {
             guard currentAlarmID != systemAlarm.id else { continue }
-            guard let alarm = resolveAlarm(id: systemAlarm.id) else {
-                print("⚠️ AlarmKit meldet alerting, aber Alarmdaten fehlen: \(systemAlarm.id)")
+            // #region agent log
+            let resolved = resolveAlarm(id: systemAlarm.id)
+            PhantomDebug.log("handleSystemAlarmUpdates", "alerting detected",
+                data: [
+                    "alarmKitID": systemAlarm.id.uuidString,
+                    "schedule": String(describing: systemAlarm.schedule),
+                    "resolved": resolved != nil,
+                    "resolvedLabel": resolved?.label ?? "<nil>",
+                    "resolvedTime": resolved?.time.description ?? "<nil>",
+                    "resolvedRepeatDays": Array(resolved?.repeatDays ?? []).sorted(),
+                    "now": Date().description
+                ])
+            // #endregion
+            guard let alarm = resolved else {
+                Logger.alarm.error("AlarmKit meldet alerting, aber Alarmdaten fehlen: \(systemAlarm.id.uuidString, privacy: .public)")
                 continue
             }
 
-            print("🔔 AlarmKit ALERTING erkannt: \(alarm.label)")
+            Logger.alarm.notice("AlarmKit ALERTING erkannt: \(alarm.label, privacy: .public)")
             playAlarm(alarm, shouldNotify: false)
         }
     }
@@ -981,9 +1238,30 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             return nil
         }
 
+        let firstAttempt = alarmDate
+        var didAddDay = false
         if alarmDate <= now {
             alarmDate = calendar.date(byAdding: .day, value: 1, to: alarmDate) ?? alarmDate
+            didAddDay = true
         }
+        // #region agent log
+        PhantomDebug.log("nextOneTimeAlarmDate", "computed",
+            data: [
+                "alarmID": alarm.id.uuidString,
+                "alarmLabel": alarm.label,
+                "alarmTimeRaw": alarm.time.description,
+                "alarmTimeRawEpoch": alarm.time.timeIntervalSince1970,
+                "now": now.description,
+                "extractedHour": timeComponents.hour ?? -1,
+                "extractedMinute": timeComponents.minute ?? -1,
+                "firstAttempt": firstAttempt.description,
+                "didAddDay": didAddDay,
+                "result": alarmDate.description,
+                "resultEpoch": alarmDate.timeIntervalSince1970,
+                "timezone": calendar.timeZone.identifier,
+                "timezoneOffset": calendar.timeZone.secondsFromGMT()
+            ])
+        // #endregion
         return alarmDate
     }
 
@@ -1020,10 +1298,17 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             textColor: .white,
             systemImageName: "stop.fill"
         )
+        let secondaryButton = AlarmButton(
+            text: LocalizedStringResource(stringLiteral: "WakeFlow öffnen"),
+            textColor: .white,
+            systemImageName: "arrow.up.right.square.fill"
+        )
 
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: alarm.label),
-            stopButton: stopButton
+            stopButton: stopButton,
+            secondaryButton: secondaryButton,
+            secondaryButtonBehavior: .custom
         )
 
         let presentation = AlarmPresentation(alert: alert)
@@ -1053,21 +1338,19 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                 self.hasAuthorizedSystemAlarms = (authState == .authorized)
 
                 guard self.loadScheduledAlarmSnapshots()[alarm.id]?.isEnabled == true else {
-                    print("ℹ️ Alarm wurde während der AlarmKit-Anfrage deaktiviert: \(alarm.label)")
+                    Logger.alarm.info("Alarm wurde während der AlarmKit-Anfrage deaktiviert: \(alarm.label, privacy: .public)")
                     return
                 }
 
                 guard authState == .authorized else {
                     self.usesSystemAlarmByID[alarm.id] = false
-                    print("⚠️ AlarmKit nicht autorisiert - nutze Notification-Fallback: \(alarm.label)")
-                    self.scheduleNotificationFallbacks(for: alarm)
+                    Logger.alarm.notice("AlarmKit nicht autorisiert - kein iOS-26-Notification-Fallback: \(alarm.label, privacy: .public)")
                     return
                 }
 
                 guard let schedule = self.systemAlarmSchedule(for: alarm) else {
                     self.usesSystemAlarmByID[alarm.id] = false
-                    print("⚠️ AlarmKit Schedule ungültig: \(alarm.label)")
-                    self.scheduleNotificationFallbacks(for: alarm)
+                    Logger.alarm.notice("AlarmKit Schedule ungültig - kein iOS-26-Notification-Fallback: \(alarm.label, privacy: .public)")
                     return
                 }
 
@@ -1080,25 +1363,51 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                     sound = .named(soundFileName)
                 } else {
                     sound = .default
-                    print("⚠️ AlarmKit Sound nicht gefunden (\(soundFileName)), nutze default")
+                    Logger.alarm.notice("AlarmKit Sound nicht gefunden (\(soundFileName, privacy: .public)), nutze default")
                 }
 
                 let configuration = AlarmKit.AlarmManager.AlarmConfiguration<WakeFlowAlarmMetadata>.alarm(
                     schedule: schedule,
                     attributes: self.systemAlarmAttributes(for: alarm),
+                    secondaryIntent: OpenWakeFlowFromAlarmIntent(alarmID: alarm.id.uuidString),
                     sound: sound
                 )
 
+                // #region agent log
+                let alarmsBefore = (try? AlarmKit.AlarmManager.shared.alarms) ?? []
+                PhantomDebug.log("scheduleSystemAlarm", "AlarmKit alarms BEFORE schedule",
+                    data: [
+                        "count": alarmsBefore.count,
+                        "ids": alarmsBefore.map { "\($0.id.uuidString):\(String(describing: $0.state)):\(String(describing: $0.schedule))" }
+                    ])
+                PhantomDebug.log("scheduleSystemAlarm", "submitting to AlarmKit",
+                    data: [
+                        "alarmID": alarm.id.uuidString,
+                        "alarmLabel": alarm.label,
+                        "alarmTimeRaw": alarm.time.description,
+                        "alarmRepeatDays": Array(alarm.repeatDays).sorted(),
+                        "schedule": String(describing: schedule),
+                        "now": Date().description,
+                        "soundFile": soundFileName
+                    ])
+                // #endregion
                 try? self.systemAlarmManager.cancel(id: alarm.id)
                 _ = try await self.systemAlarmManager.schedule(id: alarm.id, configuration: configuration)
 
+                // #region agent log
+                let alarmsAfter = (try? AlarmKit.AlarmManager.shared.alarms) ?? []
+                PhantomDebug.log("scheduleSystemAlarm", "AlarmKit alarms AFTER schedule",
+                    data: [
+                        "count": alarmsAfter.count,
+                        "ids": alarmsAfter.map { "\($0.id.uuidString):\(String(describing: $0.state)):\(String(describing: $0.schedule))" }
+                    ])
+                // #endregion
                 self.usesSystemAlarmByID[alarm.id] = true
-                print("✅ AlarmKit Alarm geplant: \(alarm.label) [\(alarm.id.uuidString)]")
+                Logger.alarm.notice("AlarmKit Alarm geplant: \(alarm.label, privacy: .public) [\(alarm.id.uuidString, privacy: .public)]")
             } catch {
                 self.usesSystemAlarmByID[alarm.id] = false
                 self.refreshSystemAlarmAuthorization()
-                print("❌ AlarmKit Scheduling Fehler (\(alarm.label)): \(error)")
-                self.scheduleNotificationFallbacks(for: alarm)
+                Logger.alarm.error("AlarmKit Scheduling Fehler (\(alarm.label, privacy: .public)): \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -1106,10 +1415,25 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     private func cancelSystemAlarm(id: UUID, stopIfAlerting: Bool = false) {
         guard #available(iOS 26.0, *) else { return }
 
+        // #region agent log
+        var stopErr: String? = nil
+        var cancelErr: String? = nil
+        // #endregion
         if stopIfAlerting {
-            try? systemAlarmManager.stop(id: id)
+            do { try systemAlarmManager.stop(id: id) }
+            catch { stopErr = error.localizedDescription }
         }
-        try? systemAlarmManager.cancel(id: id)
+        do { try systemAlarmManager.cancel(id: id) }
+        catch { cancelErr = error.localizedDescription }
+        // #region agent log
+        PhantomDebug.log("cancelSystemAlarm", "cancel attempt",
+            data: [
+                "id": id.uuidString,
+                "stopIfAlerting": stopIfAlerting,
+                "stopError": stopErr ?? "<none>",
+                "cancelError": cancelErr ?? "<none>"
+            ])
+        // #endregion
         usesSystemAlarmByID[id] = nil
     }
     
@@ -1125,6 +1449,11 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         persistScheduledAlarmSnapshot(alarm)
         resetAppKillWarning()
 
+        // Silent Audio aufrechterhalten, damit AVAudioPlayer.play() im Background nicht fehlschlägt.
+        // Ohne aktiven Player verliert die App ihre Background-Audio-Privilegien, und beim
+        // AlarmKit-Trigger schlägt play() fehl, bis die App wieder in den Vordergrund kommt.
+        startSilentAudio(forceStart: true)
+
         if #available(iOS 26.0, *) {
             scheduleSystemAlarm(for: alarm)
         } else {
@@ -1133,7 +1462,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     }
 
     private func scheduleNotificationFallbacks(for alarm: Alarm) {
-        print("📢 Plane Notification-Fallback für: \(alarm.label)")
+        Logger.notifications.info("Plane Notification-Fallback für: \(alarm.label, privacy: .public)")
 
         // WICHTIG: Starte Silent Audio um App wach zu halten
         startSilentAudio(forceStart: true)
@@ -1151,23 +1480,23 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             let scheduleCount = min(notificationCount, availableSlots)
 
             if scheduleCount == 0 {
-                print("⚠️ Keine Slots für Notification-Fallback verfügbar")
+                Logger.notifications.notice("Keine Slots für Notification-Fallback verfügbar")
             }
 
             if alarm.repeatDays.isEmpty {
                 let now = Date()
 
                 guard let alarmDate = self.nextOneTimeAlarmDate(for: alarm, now: now) else {
-                    print("❌ Konnte Alarm-Datum nicht erstellen")
+                    Logger.notifications.error("Konnte Alarm-Datum nicht erstellen")
                     return
                 }
 
                 let timeInterval = alarmDate.timeIntervalSince(now)
-                print("📅 Alarm geplant für: \(alarmDate)")
-                print("⏱️ In: \(timeInterval) Sekunden (\(timeInterval / 60) Minuten)")
+                Logger.notifications.info("Alarm geplant für: \(alarmDate.description, privacy: .public)")
+                Logger.notifications.info("In: \(timeInterval, privacy: .public)s (\(timeInterval / 60, privacy: .public) min)")
 
                 guard timeInterval >= 1 else {
-                    print("❌ TimeInterval zu kurz: \(timeInterval)")
+                    Logger.notifications.error("TimeInterval zu kurz: \(timeInterval, privacy: .public)")
                     return
                 }
 
@@ -1183,9 +1512,9 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
                         UNUserNotificationCenter.current().add(request) { error in
                             if let error = error {
-                                print("❌ Fehler beim Planen (\(i)): \(error)")
+                                Logger.notifications.error("Fehler beim Planen (\(i, privacy: .public)): \(error.localizedDescription, privacy: .public)")
                             } else if i == 0 {
-                                print("✅ Benachrichtigung \(i) geplant in \(finalInterval)s mit Sound")
+                                Logger.notifications.info("Benachrichtigung \(i, privacy: .public) geplant in \(finalInterval, privacy: .public)s mit Sound")
                             }
                         }
                     }
@@ -1199,16 +1528,16 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                     dayComponents.second = 0
 
                     guard let nextAlarmDate = calendar.nextDate(after: now, matching: dayComponents, matchingPolicy: .nextTime) else {
-                        print("❌ Konnte nächstes Datum für Tag \(day) nicht finden")
+                        Logger.notifications.error("Konnte nächstes Datum für Tag \(day, privacy: .public) nicht finden")
                         continue
                     }
 
                     let timeInterval = nextAlarmDate.timeIntervalSince(now)
-                    print("📅 Wiederkehrender Alarm für Tag \(day): \(nextAlarmDate)")
-                    print("⏱️ In: \(timeInterval) Sekunden (\(timeInterval / 60) Minuten)")
+                    Logger.notifications.info("Wiederkehrender Alarm für Tag \(day, privacy: .public): \(nextAlarmDate.description, privacy: .public)")
+                    Logger.notifications.info("In: \(timeInterval, privacy: .public)s (\(timeInterval / 60, privacy: .public) min)")
 
                     guard timeInterval >= 1 else {
-                        print("❌ TimeInterval zu kurz für Tag \(day): \(timeInterval)")
+                        Logger.notifications.error("TimeInterval zu kurz für Tag \(day, privacy: .public): \(timeInterval, privacy: .public)")
                         continue
                     }
 
@@ -1224,9 +1553,9 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
                             UNUserNotificationCenter.current().add(request) { error in
                                 if let error = error {
-                                    print("❌ Fehler beim Planen (Tag \(day), \(i)): \(error)")
+                                    Logger.notifications.error("Fehler beim Planen (Tag \(day, privacy: .public), \(i, privacy: .public)): \(error.localizedDescription, privacy: .public)")
                                 } else if i == 0 {
-                                    print("✅ Tag \(day), Benachrichtigung \(i) in \(finalInterval)s mit Sound")
+                                    Logger.notifications.info("Tag \(day, privacy: .public), Benachrichtigung \(i, privacy: .public) in \(finalInterval, privacy: .public)s mit Sound")
                                 }
                             }
                         }
@@ -1260,7 +1589,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
-        print("🗑️ \(identifiers.count) Benachrichtigungen für Alarm gelöscht")
+        Logger.notifications.debug("\(identifiers.count, privacy: .public) Benachrichtigungen für Alarm gelöscht")
         
         // BACKUP: Lösche auch die Backup-Notification
         cancelBackupNotification(for: alarm)
@@ -1278,20 +1607,71 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     
     // WICHTIG: Wird aufgerufen wenn User auf Notification tippt
     func triggerAlarmFromNotification(alarmID: UUID, userInfo: [AnyHashable: Any] = [:]) {
-        print("🔔 Alarm-Trigger von Notification: \(alarmID)")
+        Logger.alarm.notice("Alarm-Trigger von Notification: \(alarmID.uuidString, privacy: .public)")
         
         // Finde den Alarm in Memory, gespeicherten Weckern oder direkt aus dem Notification-Payload.
         guard let alarm = resolveAlarm(id: alarmID, userInfo: userInfo) else {
-            print("❌ Alarm nicht gefunden: \(alarmID)")
+            Logger.alarm.error("Alarm nicht gefunden: \(alarmID.uuidString, privacy: .public)")
             return
         }
         
         // Starte den Alarm (nur wenn er noch nicht läuft)
         if !isPlaying {
-            print("▶️ Starte Alarm: \(alarm.label)")
+            Logger.alarm.notice("Starte Alarm: \(alarm.label, privacy: .public)")
             playAlarm(alarm)
         } else {
-            print("⏸️ Alarm läuft bereits")
+            Logger.alarm.debug("Alarm läuft bereits")
+        }
+    }
+
+    func handleAlarmKitOpenMarkerIfNeeded() {
+        let defaults = UserDefaults.standard
+        defaults.synchronize()
+
+        guard let alarmIDString = defaults.string(forKey: WakeFlowAlarmKitLaunchMarker.alarmIDKey) else {
+            return
+        }
+
+        let timestamp = defaults.object(forKey: WakeFlowAlarmKitLaunchMarker.timestampKey) as? TimeInterval
+        // #region agent log
+        PhantomDebug.log("handleAlarmKitOpenMarkerIfNeeded", "marker found",
+            data: [
+                "alarmID": alarmIDString,
+                "timestamp": timestamp ?? -1,
+                "markerAge": timestamp.map { Date().timeIntervalSince1970 - $0 } ?? -1,
+                "isPlaying": isPlaying
+            ])
+        // #endregion
+        defaults.removeObject(forKey: WakeFlowAlarmKitLaunchMarker.alarmIDKey)
+        defaults.removeObject(forKey: WakeFlowAlarmKitLaunchMarker.timestampKey)
+        defaults.synchronize()
+
+        guard let timestamp else {
+            Logger.alarm.notice("AlarmKit Open-Marker ohne Timestamp verworfen")
+            return
+        }
+
+        let markerAge = Date().timeIntervalSince1970 - timestamp
+        guard markerAge >= 0 && markerAge < 30 else {
+            Logger.alarm.notice("AlarmKit Open-Marker zu alt verworfen: \(markerAge, privacy: .public)s")
+            return
+        }
+
+        guard let alarmID = UUID(uuidString: alarmIDString) else {
+            Logger.alarm.error("AlarmKit Open-Marker mit ungültiger Alarm-ID verworfen: \(alarmIDString, privacy: .public)")
+            return
+        }
+
+        guard let alarm = resolveAlarm(id: alarmID) else {
+            Logger.alarm.error("AlarmKit Open-Marker konnte Alarm nicht auflösen: \(alarmID.uuidString, privacy: .public)")
+            return
+        }
+
+        if !isPlaying {
+            Logger.alarm.notice("AlarmKit Open-Marker startet MoonView für: \(alarm.label, privacy: .public)")
+            playAlarm(alarm, shouldNotify: false)
+        } else {
+            Logger.alarm.info("AlarmKit Open-Marker konsumiert, Alarm läuft bereits")
         }
     }
     
@@ -1301,7 +1681,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
         // Prüfe ob es aktive Alarme gibt
         if hasActiveAlarms() {
-            print("🔄 App bereit für Background Alarme")
+            Logger.lifecycle.info("App bereit für Background Alarme")
             // Audio Session ist schon in playback Mode configuriert
         }
     }
@@ -1320,10 +1700,10 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             // Spiele wenn gerade aktiv geplant wird ODER aktive Alarme existieren
             if forceStart || hasActiveAlarms() {
                 silentPlayer?.play()
-                print("🔇 Silent Audio gestartet - App bleibt im Hintergrund aktiv")
+                Logger.lifecycle.info("Silent Audio gestartet - App bleibt im Hintergrund aktiv")
             }
         } catch {
-            print("❌ Konnte Silent Audio nicht starten: \(error)")
+            Logger.lifecycle.error("Konnte Silent Audio nicht starten: \(error.localizedDescription, privacy: .public)")
             // Fallback: Nutze einen der App-Sounds
             if let fallbackURL = Bundle.main.url(forResource: "alarm-clock-1", withExtension: "caf") {
                 do {
@@ -1333,10 +1713,10 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
                     silentPlayer?.prepareToPlay()
                     if forceStart || hasActiveAlarms() {
                         silentPlayer?.play()
-                        print("🔇 Silent Audio (Fallback) gestartet")
+                        Logger.lifecycle.info("Silent Audio (Fallback) gestartet")
                     }
                 } catch {
-                    print("❌ Auch Fallback fehlgeschlagen: \(error)")
+                    Logger.lifecycle.error("Auch Fallback fehlgeschlagen: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
@@ -1346,7 +1726,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     func stopSilentAudio() {
         silentPlayer?.stop()
         silentPlayer = nil
-        print("🔇 Silent Audio gestoppt")
+        Logger.lifecycle.info("Silent Audio gestoppt")
     }
     
     // Sende Warnung dass App offen bleiben muss
@@ -1354,7 +1734,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         // Prüfe ob Warnung bereits gesendet wurde (persistent)
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: "appKillWarningSent") {
-            print("⏭️ App-Kill Warnung wurde bereits gesendet - keine weitere Warnung")
+            Logger.criticalAlerts.debug("App-Kill Warnung wurde bereits gesendet - keine weitere Warnung")
             return
         }
         
@@ -1379,11 +1759,11 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                print("❌ App-Kill Warnung Fehler: \(error)")
+                Logger.criticalAlerts.error("App-Kill Warnung Fehler: \(error.localizedDescription, privacy: .public)")
             } else {
                 // Markiere als gesendet
                 defaults.set(true, forKey: "appKillWarningSent")
-                print("⚠️ App-Kill Warnung geplant (kommt in 30s wenn App geschlossen bleibt)")
+                Logger.criticalAlerts.notice("App-Kill Warnung geplant (kommt in 30s wenn App geschlossen bleibt)")
             }
         }
     }
@@ -1391,13 +1771,13 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     // Entferne App-Kill Warnung
     func cancelAppKillWarning() {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["app-kill-warning"])
-        print("✅ App-Kill Warnung entfernt (App ist wieder offen)")
+        Logger.criticalAlerts.debug("App-Kill Warnung entfernt (App ist wieder offen)")
     }
     
     // Setze Warnung zurück (für neuen Alarm)
     func resetAppKillWarning() {
         UserDefaults.standard.set(false, forKey: "appKillWarningSent")
-        print("🔄 App-Kill Warnung zurückgesetzt - kann wieder gesendet werden")
+        Logger.criticalAlerts.debug("App-Kill Warnung zurückgesetzt - kann wieder gesendet werden")
     }
     
     // Speichere aktiven Alarm-Status persistent
@@ -1411,7 +1791,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         defaults.set(alarm.volume, forKey: "activeAlarmVolume")
         defaults.set(Date(), forKey: "activeAlarmStartTime")
         
-        print("💾 Alarm-Status gespeichert: \(alarm.label)")
+        Logger.alarm.debug("Alarm-Status gespeichert: \(alarm.label, privacy: .public)")
     }
     
     // Lade aktiven Alarm-Status beim App-Start
@@ -1422,7 +1802,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
               let alarmID = UUID(uuidString: alarmIDString),
               let label = defaults.string(forKey: "activeAlarmLabel"),
               let soundName = defaults.string(forKey: "activeAlarmSound") else {
-            print("ℹ️ Kein aktiver Alarm gefunden")
+            Logger.alarm.debug("Kein aktiver Alarm gefunden")
             return nil
         }
         
@@ -1439,7 +1819,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             volume: volume
         )
         
-        print("🔄 Aktiver Alarm geladen: \(label)")
+        Logger.alarm.notice("Aktiver Alarm geladen: \(label, privacy: .public)")
         return alarm
     }
     
@@ -1452,14 +1832,14 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         defaults.removeObject(forKey: "activeAlarmVolume")
         defaults.removeObject(forKey: "activeAlarmStartTime")
         
-        print("🗑️ Alarm-Status gelöscht")
+        Logger.alarm.debug("Alarm-Status gelöscht")
     }
     
     // MARK: - Keep-Alive Service
     
     /// Starte Keep-Alive Service um App für 15-30 Minuten wach zu halten
     func startKeepAliveService() {
-        print("🔋 Starte Keep-Alive Service (15-30 Min)")
+        Logger.lifecycle.info("Starte Keep-Alive Service (15-30 Min)")
         
         // Speichere dass Keep-Alive aktiv ist
         let defaults = UserDefaults.standard
@@ -1476,9 +1856,9 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
             silentPlayer?.volume = 0.0 // Komplett stumm
             silentPlayer?.prepareToPlay()
             silentPlayer?.play()
-            print("🔇 Keep-Alive Audio startet (stumm)")
+            Logger.lifecycle.info("Keep-Alive Audio startet (stumm)")
         } catch {
-            print("❌ Keep-Alive Audio Fehler: \(error)")
+            Logger.lifecycle.error("Keep-Alive Audio Fehler: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -1486,7 +1866,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     
     /// Plane tägliche Reminder-Notification um Schlafenszeit (nur wenn Alarme für morgen)
     func scheduleReminderNotification(at sleepTime: Date) {
-        print("📝 Plane Reminder-Notification um \(sleepTime.formatted(date: .omitted, time: .shortened))")
+        Logger.notifications.info("Plane Reminder-Notification um \(sleepTime.formatted(date: .omitted, time: .shortened), privacy: .public)")
         
         let defaults = UserDefaults.standard
         defaults.set(sleepTime.timeIntervalSince1970, forKey: "sleepTime")
@@ -1496,7 +1876,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         
         // Prüfe ob morgen Alarme existieren
         guard hasAlarmsForTomorrow() else {
-            print("ℹ️ Keine Alarme für morgen - Reminder wird nicht geplant")
+            Logger.notifications.debug("Keine Alarme für morgen - Reminder wird nicht geplant")
             return
         }
         
@@ -1519,9 +1899,9 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                print("❌ Reminder Notification Fehler: \(error)")
+                Logger.notifications.error("Reminder Notification Fehler: \(error.localizedDescription, privacy: .public)")
             } else {
-                print("✅ Tägliche Reminder-Notification geplant um \(components.hour ?? 0):\(String(format: "%02d", components.minute ?? 0))")
+                Logger.notifications.info("Tägliche Reminder-Notification geplant um \(components.hour ?? 0, privacy: .public):\(String(format: "%02d", components.minute ?? 0), privacy: .public)")
             }
         }
     }
@@ -1538,9 +1918,9 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
     
     // MARK: - Backup Notifications
     
-    /// Plane loopende Backup-Notification für Alarm
+    // LEGACY — nicht mehr verwendet ab AlarmKit-Migration. Wird in Phase 2 entfernt.
     func scheduleBackupNotification(for alarm: Alarm) {
-        print("📢 Plane Backup-Notification für: \(alarm.label)")
+        Logger.notifications.info("Plane Backup-Notification für: \(alarm.label, privacy: .public)")
 
         func makeContent() -> UNMutableNotificationContent {
             let content = UNMutableNotificationContent()
@@ -1575,9 +1955,9 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
             UNUserNotificationCenter.current().add(request) { error in
                 if let error = error {
-                    print("❌ Backup-Notification Fehler: \(error)")
+                    Logger.notifications.error("Backup-Notification Fehler: \(error.localizedDescription, privacy: .public)")
                 } else {
-                    print("✅ Backup-Notification geplant: \(alarm.label) um \(components.hour ?? 0):\(String(format: "%02d", components.minute ?? 0))")
+                    Logger.notifications.info("Backup-Notification geplant: \(alarm.label, privacy: .public) um \(components.hour ?? 0, privacy: .public):\(String(format: "%02d", components.minute ?? 0), privacy: .public)")
                 }
             }
         }
@@ -1588,7 +1968,7 @@ class BackgroundAlarmManager: NSObject, ObservableObject, AVAudioPlayerDelegate 
         var identifiers = ["backup-alarm-\(alarm.id)"]
         identifiers.append(contentsOf: (1...7).map { "backup-alarm-\(alarm.id)-\($0)" })
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
-        print("🗑️ Backup-Notification entfernt: \(alarm.label)")
+        Logger.notifications.debug("Backup-Notification entfernt: \(alarm.label, privacy: .public)")
     }
     
     deinit {
@@ -1611,9 +1991,9 @@ class AlarmManager: ObservableObject {
     func requestAuthorization() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
             if granted {
-                print("✅ Benachrichtigungen erlaubt")
+                Logger.notifications.info("Benachrichtigungen erlaubt")
             } else if let error = error {
-                print("❌ Fehler: \(error.localizedDescription)")
+                Logger.notifications.error("Fehler: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -1633,7 +2013,7 @@ struct ContentView: View {
     private func saveAlarms() {
         if let encoded = try? JSONEncoder().encode(alarms) {
             UserDefaults.standard.set(encoded, forKey: "savedAlarms")
-            print("💾 \(alarms.count) Wecker gespeichert")
+            Logger.lifecycle.debug("\(alarms.count, privacy: .public) Wecker gespeichert")
         }
     }
     
@@ -1641,9 +2021,9 @@ struct ContentView: View {
         if let data = UserDefaults.standard.data(forKey: "savedAlarms"),
            let decoded = try? JSONDecoder().decode([Alarm].self, from: data) {
             alarms = decoded
-            print("📂 \(decoded.count) Wecker geladen")
+            Logger.lifecycle.debug("\(decoded.count, privacy: .public) Wecker geladen")
         } else {
-            print("📂 Keine gespeicherten Wecker gefunden")
+            Logger.lifecycle.debug("Keine gespeicherten Wecker gefunden")
         }
     }
     
@@ -1659,13 +2039,13 @@ struct ContentView: View {
                         // Direktes Aktivieren/Deaktivieren OHNE NFC!
                         alarms[index].isEnabled = newValue
                         if newValue {
-                            print("🔵 Alarm aktiviert (ohne NFC): \(alarm.label)")
-                            print("🔵 Alarm-Zeit: \(alarm.time)")
-                            print("🔵 Wiederholungstage: \(alarm.repeatDays)")
+                            Logger.alarm.info("Alarm aktiviert (ohne NFC): \(alarm.label, privacy: .public)")
+                            Logger.alarm.debug("Alarm-Zeit: \(alarm.time.description, privacy: .public)")
+                            Logger.alarm.debug("Wiederholungstage: \(Array(alarm.repeatDays).sorted(), privacy: .public)")
                             // WICHTIG: Plane Alarm neu!
                             backgroundAlarmManager.scheduleAlarm(alarms[index])
                         } else {
-                            print("⚪️ Alarm deaktiviert (ohne NFC): \(alarm.label)")
+                            Logger.alarm.info("Alarm deaktiviert (ohne NFC): \(alarm.label, privacy: .public)")
                             // WICHTIG: Lösche geplante Notifications!
                             backgroundAlarmManager.cancelAlarm(alarms[index])
                         }
@@ -1707,10 +2087,10 @@ struct ContentView: View {
                 onSave: { newAlarm in
                     // Neuer Alarm direkt hinzufügen OHNE NFC!
                     alarms.append(newAlarm)
-                    print("✅ Neuer Alarm hinzugefügt (ohne NFC): \(newAlarm.label)")
-                    print("✅ Alarm-Zeit: \(newAlarm.time)")
-                    print("✅ Alarm aktiviert: \(newAlarm.isEnabled)")
-                    print("✅ Wiederholungstage: \(newAlarm.repeatDays)")
+                    Logger.alarm.info("Neuer Alarm hinzugefügt (ohne NFC): \(newAlarm.label, privacy: .public)")
+                    Logger.alarm.debug("Alarm-Zeit: \(newAlarm.time.description, privacy: .public)")
+                    Logger.alarm.debug("Alarm aktiviert: \(newAlarm.isEnabled, privacy: .public)")
+                    Logger.alarm.debug("Wiederholungstage: \(Array(newAlarm.repeatDays).sorted(), privacy: .public)")
                     // Speichere und update
                     saveAlarms()
                     backgroundAlarmManager.updateAlarms(alarms)
@@ -1729,19 +2109,19 @@ struct ContentView: View {
                     // Prüfe ob der gestoppte Alarm einmalig war
                     DispatchQueue.main.async {
                         guard let alarmID = alarmID else {
-                            print("❌ Keine Alarm-ID übergeben")
+                            Logger.alarm.error("Keine Alarm-ID übergeben")
                             return
                         }
                         
                         if let index = alarms.firstIndex(where: { $0.id == alarmID }) {
                             let alarm = alarms[index]
-                            print("🔍 Alarm gestoppt - ID: \(alarmID)")
-                            print("🔍 Wiederholungstage: \(alarm.repeatDays)")
-                            print("🔍 Ist einmalig: \(alarm.repeatDays.isEmpty)")
+                            Logger.alarm.debug("Alarm gestoppt - ID: \(alarmID.uuidString, privacy: .public)")
+                            Logger.alarm.debug("Wiederholungstage: \(Array(alarm.repeatDays).sorted(), privacy: .public)")
+                            Logger.alarm.debug("Ist einmalig: \(alarm.repeatDays.isEmpty, privacy: .public)")
                             
                             if alarm.repeatDays.isEmpty {
                                 // Einmaliger Alarm → Deaktivieren!
-                                print("⚪️ Einmaliger Alarm wird deaktiviert: \(alarm.label)")
+                                Logger.alarm.info("Einmaliger Alarm wird deaktiviert: \(alarm.label, privacy: .public)")
                                 alarms[index].isEnabled = false
                                 
                                 // Trigger manuelles Update der UI
@@ -1751,10 +2131,10 @@ struct ContentView: View {
                                     alarms = updatedAlarms
                                     saveAlarms()
                                     backgroundAlarmManager.updateAlarms(alarms)
-                                    print("✅ Toggle Switch ist jetzt: \(alarms[index].isEnabled ? "AN" : "AUS")")
+                                    Logger.alarm.debug("Toggle Switch ist jetzt: \(alarms[index].isEnabled ? "AN" : "AUS", privacy: .public)")
                                 }
                             } else {
-                                print("🔄 Wiederkehrender Alarm bleibt aktiv: \(alarm.label)")
+                                Logger.alarm.info("Wiederkehrender Alarm bleibt aktiv: \(alarm.label, privacy: .public)")
                             }
                         }
                     }
@@ -1776,18 +2156,21 @@ struct ContentView: View {
             // Das stellt sicher, dass Alarme auch nach App-Neustart oder wenn iOS die Notifications gelöscht hat, funktionieren
             for alarm in alarms where alarm.isEnabled {
                 backgroundAlarmManager.scheduleAlarm(alarm)
-                print("🔄 Alarm neu geplant: \(alarm.label) um \(alarm.time)")
+                Logger.alarm.notice("Alarm neu geplant: \(alarm.label, privacy: .public) um \(alarm.time.description, privacy: .public)")
             }
             
             // Update alarms in background manager
             backgroundAlarmManager.updateAlarms(alarms)
+
+            // Verarbeite defensiv einen frischen AlarmKit-Open-Marker aus dem Secondary Intent.
+            backgroundAlarmManager.handleAlarmKitOpenMarkerIfNeeded()
             
             // Pausiere Notifications wenn App geöffnet wird
             backgroundAlarmManager.pauseNotifications()
             
             // WICHTIG: Starte Keep-Alive Service um App für 15-30 Min wach zu halten
             backgroundAlarmManager.startKeepAliveService()
-            print("🔋 Keep-Alive Service aktiviert")
+            Logger.lifecycle.info("Keep-Alive Service aktiviert")
             
             // Lade Schlafenszeit und plane Reminder-Notification
             loadAndScheduleReminder()
@@ -1806,22 +2189,28 @@ struct ContentView: View {
             // Wenn keine aktiven Alarme mehr vorhanden sind, entferne Warnung
             if !newAlarms.contains(where: { $0.isEnabled }) {
                 backgroundAlarmManager.cancelAppKillWarning()
-                print("✅ Keine aktiven Alarme mehr - Warnung entfernt")
+                Logger.lifecycle.debug("Keine aktiven Alarme mehr - Warnung entfernt")
             }
         }
         .onChange(of: backgroundAlarmManager.isPlaying) { isPlaying in
             // FullScreenCover erscheint automatisch durch .constant(backgroundAlarmManager.isPlaying)
             if isPlaying {
-                print("🌙 Mond-Screen erscheint - Alarm klingelt")
+                Logger.lifecycle.notice("Mond-Screen erscheint - Alarm klingelt")
             } else {
-                print("🌙 Mond-Screen verschwindet - Alarm gestoppt")
+                Logger.lifecycle.notice("Mond-Screen verschwindet - Alarm gestoppt")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             // App kommt in den Vordergrund
             backgroundAlarmManager.pauseNotifications()
             backgroundAlarmManager.cancelAppKillWarning() // Entferne Warnung
-            print("📱 App in Vordergrund - Notifications pausiert + Warnung entfernt")
+            backgroundAlarmManager.handleAlarmKitOpenMarkerIfNeeded()
+            Logger.lifecycle.notice("App in Vordergrund - Notifications pausiert + Warnung entfernt")
+            // #region agent log
+            Task { @MainActor in
+                await PhantomDebug.dumpBootState(reason: "willEnterForeground")
+            }
+            // #endregion
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             // App geht in den Hintergrund
@@ -1832,14 +2221,19 @@ struct ContentView: View {
                 if backgroundAlarmManager.shouldShowAppKeepAliveWarning() {
                     // Nur Fallback-Hinweis, wenn kein zuverlässiger systemischer Alarmpfad aktiv ist
                     backgroundAlarmManager.scheduleAppKillWarning()
-                    print("⚠️ App in Hintergrund mit aktivem Wecker - Fallback-Warnung geplant")
+                    Logger.lifecycle.notice("App in Hintergrund mit aktivem Wecker - Fallback-Warnung geplant")
                 } else {
                     backgroundAlarmManager.cancelAppKillWarning()
-                    print("✅ App in Hintergrund - AlarmKit übernimmt zuverlässig")
+                    Logger.lifecycle.info("App in Hintergrund - AlarmKit übernimmt zuverlässig")
                 }
             } else {
-                print("📱 App in Hintergrund - Notifications fortgesetzt")
+                Logger.lifecycle.debug("App in Hintergrund - Notifications fortgesetzt")
             }
+            // #region agent log
+            Task { @MainActor in
+                await PhantomDebug.dumpBootState(reason: "didEnterBackground")
+            }
+            // #endregion
         }
     }
     
@@ -1848,11 +2242,11 @@ struct ContentView: View {
         // [CRITICAL MESSAGING DEAKTIVIERT] — Standard-Benachrichtigungen
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
             if granted {
-                print("✅ Notification Permissions gewährt")
+                Logger.notifications.info("Notification Permissions gewährt")
             } else if let error = error {
-                print("❌ Notification Permissions Fehler: \(error.localizedDescription)")
+                Logger.notifications.error("Notification Permissions Fehler: \(error.localizedDescription, privacy: .public)")
             } else {
-                print("⚠️ Notification Permissions abgelehnt")
+                Logger.notifications.notice("Notification Permissions abgelehnt")
             }
         }
     }
@@ -1885,21 +2279,37 @@ struct ContentView: View {
         )
         
         UNUserNotificationCenter.current().setNotificationCategories([alarmCategory, warningCategory])
-        print("✅ Notification Categories registriert (Alarm + Warning)")
+        Logger.notifications.info("Notification Categories registriert (Alarm + Warning)")
     }
     
     // Prüfe nach App-Neustart ob ein Alarm aktiv war
     private func checkForActiveAlarmAfterRestart() {
         // Warte kurz damit UI geladen ist
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard !backgroundAlarmManager.isPlaying else {
+                Logger.alarm.debug("Aktiver Alarm läuft bereits - kein Neustart nötig")
+                return
+            }
+
             if let activeAlarm = backgroundAlarmManager.loadActiveAlarmState() {
-                print("🔄 APP NEUSTART - Alarm war aktiv: \(activeAlarm.label)")
-                print("🔄 Starte Alarm + Mond-Screen neu...")
+                // #region agent log
+                let activeStart = UserDefaults.standard.object(forKey: "activeAlarmStartTime") as? Date
+                PhantomDebug.log("checkForActiveAlarmAfterRestart", "REPLAY active alarm state",
+                    data: [
+                        "alarmID": activeAlarm.id.uuidString,
+                        "label": activeAlarm.label,
+                        "savedStart": activeStart?.description ?? "<nil>",
+                        "now": Date().description,
+                        "ageSec": activeStart.map { Date().timeIntervalSince($0) } ?? -1
+                    ])
+                // #endregion
+                Logger.alarm.notice("APP NEUSTART - Alarm war aktiv: \(activeAlarm.label, privacy: .public)")
+                Logger.alarm.notice("Starte Alarm + Mond-Screen neu")
                 
                 // Starte Alarm wieder
                 backgroundAlarmManager.playAlarm(activeAlarm)
                 
-                print("✅ Alarm erfolgreich neu gestartet nach App-Kill!")
+                Logger.alarm.notice("Alarm erfolgreich neu gestartet nach App-Kill")
             }
         }
     }
@@ -1913,9 +2323,9 @@ struct ContentView: View {
             
             // Plane täglich Reminder-Notification
             backgroundAlarmManager.scheduleReminderNotification(at: sleepTime)
-            print("📝 Reminder-Notification geplant um \(sleepTime.formatted(date: .omitted, time: .shortened))")
+            Logger.notifications.info("Reminder-Notification geplant um \(sleepTime.formatted(date: .omitted, time: .shortened), privacy: .public)")
         } else {
-            print("ℹ️ Keine Schlafenszeit gespeichert - Bitte in Einstellungen einstellen")
+            Logger.notifications.debug("Keine Schlafenszeit gespeichert - Bitte in Einstellungen einstellen")
         }
     }
 }
@@ -1925,6 +2335,12 @@ struct AlarmsView: View {
     @Binding var alarms: [Alarm]
     @Binding var showingAddAlarm: Bool
     @State private var editingAlarmID: UUID?
+#if DEBUG
+    @State private var showingSpikeLog = false
+#endif
+    // #region agent log
+    @State private var showingPhantomLog = false
+    // #endregion
     let iosBlue: Color
     let backgroundAlarmManager: BackgroundAlarmManager
     let onAlarmToggle: (Int, Bool) -> Void // (index, newValue)
@@ -1942,6 +2358,17 @@ struct AlarmsView: View {
                     
                     Spacer()
                     
+                    // #region agent log
+                    Button(action: { showingPhantomLog = true }) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.yellow)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(.ultraThinMaterial))
+                    }
+                    .padding(.trailing, 8)
+                    // #endregion
+
                     Button(action: {
                         showingAddAlarm = true
                     }) {
@@ -1958,6 +2385,53 @@ struct AlarmsView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
                 .padding(.bottom, 20)
+
+#if DEBUG
+                if #available(iOS 26.0, *) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            Button("AlarmKit Spike") {
+                                Task {
+                                    await scheduleAlarmKitSpike()
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button("Cancel Spike Alarm") {
+                                cancelAlarmKitSpike()
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button("Plain Notification Spike") {
+                                Task {
+                                    await schedulePlainNotificationSpike()
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button("Cancel Plain Notification") {
+                                cancelPlainNotificationSpike()
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button("Combined Spike") {
+                                Task {
+                                    await scheduleCombinedSpike()
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button("Show Spike Log") {
+                                showingSpikeLog = true
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 20)
+                    }
+                    .padding(.bottom, 12)
+                }
+#endif
                 
                 // Alarms List
                 if alarms.isEmpty {
@@ -1986,6 +2460,9 @@ struct AlarmsView: View {
                                         editingAlarmID = alarm.id
                                     },
                                     onDelete: {
+                                        // FIX: AlarmKit-Eintrag löschen, sonst feuert er später als Phantom-Wecker
+                                        let toDelete = alarms[index]
+                                        backgroundAlarmManager.cancelAlarm(toDelete)
                                         alarms.remove(at: index)
                                     }
                                 )
@@ -2011,7 +2488,7 @@ struct AlarmsView: View {
                         // Bearbeiteter Alarm direkt speichern OHNE NFC!
                         editingAlarmID = nil
                         alarms[index] = updatedAlarm
-                        print("✅ Alarm bearbeitet (ohne NFC): \(updatedAlarm.label)")
+                        Logger.alarm.info("Alarm bearbeitet (ohne NFC): \(updatedAlarm.label, privacy: .public)")
                         // WICHTIG: Plane Alarm neu wenn aktiviert!
                         if updatedAlarm.isEnabled {
                             backgroundAlarmManager.scheduleAlarm(updatedAlarm)
@@ -2022,7 +2499,298 @@ struct AlarmsView: View {
                 )
             }
         }
+#if DEBUG
+        .sheet(isPresented: $showingSpikeLog) {
+            AlarmKitSpikeLogView()
+        }
+#endif
+        // #region agent log
+        .sheet(isPresented: $showingPhantomLog) {
+            PhantomLogView()
+        }
+        // #endregion
     }
+
+#if DEBUG
+    private func scheduleAlarmKitSpike() async {
+        guard #available(iOS 26.0, *) else { return }
+
+        await scheduleAlarmKitSpike(
+            fireDate: Date().addingTimeInterval(60),
+            spikeType: "alarmKit",
+            logPrefix: "AlarmKit Spike"
+        )
+    }
+
+    private func schedulePlainNotificationSpike() async {
+        guard #available(iOS 26.0, *) else { return }
+
+        await schedulePlainNotificationSpike(
+            fireDate: Date().addingTimeInterval(60),
+            spikeType: "plain",
+            logPrefix: "Plain Notification Spike"
+        )
+    }
+
+    private func scheduleCombinedSpike() async {
+        guard #available(iOS 26.0, *) else { return }
+
+        let fireDate = Date().addingTimeInterval(60)
+        AlarmKitSpikeDefaults.appendLog("Combined Spike: schedule button tapped for \(fireDate)")
+
+        await scheduleAlarmKitSpike(
+            fireDate: fireDate,
+            spikeType: "combined",
+            logPrefix: "Combined Spike"
+        )
+        await schedulePlainNotificationSpike(
+            fireDate: fireDate,
+            spikeType: "combined",
+            logPrefix: "Combined Spike"
+        )
+    }
+
+    private func scheduleAlarmKitSpike(fireDate: Date, spikeType: String, logPrefix: String) async {
+        guard #available(iOS 26.0, *) else { return }
+
+        let defaults = AlarmKitSpikeDefaults.defaults
+        defaults.synchronize()
+
+        AlarmKitSpikeDefaults.appendLog("\(logPrefix): AlarmKit schedule requested")
+
+        let alarmManager = AlarmKit.AlarmManager.shared
+        let currentState = alarmManager.authorizationState
+        AlarmKitSpikeDefaults.appendLog("\(logPrefix): authorization state before scheduling = \(currentState)")
+
+        switch currentState {
+        case .notDetermined:
+            do {
+                let newState = try await alarmManager.requestAuthorization()
+                AlarmKitSpikeDefaults.appendLog("\(logPrefix): authorization state after request = \(newState)")
+                guard newState == .authorized else {
+                    AlarmKitSpikeDefaults.appendLog("\(logPrefix): authorization denied/restricted — open Settings to grant")
+                    return
+                }
+            } catch {
+                AlarmKitSpikeDefaults.appendLog("\(logPrefix): authorization request failed: \(error)")
+                return
+            }
+        case .denied:
+            AlarmKitSpikeDefaults.appendLog("\(logPrefix): authorization denied/restricted — open Settings to grant")
+            return
+        case .authorized:
+            break
+        @unknown default:
+            AlarmKitSpikeDefaults.appendLog("\(logPrefix): authorization denied/restricted — open Settings to grant")
+            return
+        }
+
+        defaults.set(false, forKey: AlarmKitSpikeDefaults.verificationConsumedKey)
+
+        if let pendingAlarmIDString = defaults.string(forKey: AlarmKitSpikeDefaults.pendingAlarmIDKey),
+           let pendingAlarmID = UUID(uuidString: pendingAlarmIDString) {
+            do {
+                let existingAlarms = try alarmManager.alarms
+                AlarmKitSpikeDefaults.appendLog("\(logPrefix): raw AlarmKit alarms count before scheduling = \(existingAlarms.count)")
+                if let existingAlarm = existingAlarms.first(where: { $0.id == pendingAlarmID }) {
+                    AlarmKitSpikeDefaults.appendLog("\(logPrefix): cancelling currently-active spike alarm \(pendingAlarmID) in state \(existingAlarm.state)")
+                } else {
+                    AlarmKitSpikeDefaults.appendLog("\(logPrefix): persisted pending alarm \(pendingAlarmID) not found before scheduling; attempting defensive cancel")
+                }
+            } catch {
+                AlarmKitSpikeDefaults.appendLog("\(logPrefix): failed to query persisted pending alarm before scheduling: \(error); attempting defensive cancel")
+            }
+
+            do {
+                // Calling cancel(id:) on an alerting AlarmKit alarm has unknown UI consequences; this spike exposes that behavior for observation.
+                try alarmManager.cancel(id: pendingAlarmID)
+                AlarmKitSpikeDefaults.appendLog("\(logPrefix): canceled previous pending alarm \(pendingAlarmID)")
+            } catch {
+                AlarmKitSpikeDefaults.appendLog("\(logPrefix): cancel previous pending alarm \(pendingAlarmID) failed: \(error)")
+            }
+            defaults.removeObject(forKey: AlarmKitSpikeDefaults.pendingAlarmIDKey)
+            defaults.removeObject(forKey: AlarmKitSpikeDefaults.activeAlarmKitSpikeTypeKey)
+        }
+
+        let spikeAlarmID = UUID()
+        let stopButton = AlarmButton(
+            text: LocalizedStringResource(stringLiteral: "Stoppen"),
+            textColor: .white,
+            systemImageName: "stop.fill"
+        )
+        let secondaryButton = AlarmButton(
+            text: LocalizedStringResource(stringLiteral: "WakeFlow öffnen"),
+            textColor: .white,
+            systemImageName: "arrow.up.right.square.fill"
+        )
+        let alert = AlarmPresentation.Alert(
+            title: LocalizedStringResource(stringLiteral: "AlarmKit Spike"),
+            stopButton: stopButton,
+            secondaryButton: secondaryButton,
+            secondaryButtonBehavior: .custom
+        )
+        let presentation = AlarmPresentation(alert: alert)
+        let metadata = WakeFlowAlarmMetadata(label: "AlarmKit Spike", soundName: "default")
+        let attributes = AlarmAttributes(
+            presentation: presentation,
+            metadata: metadata,
+            tintColor: .orange
+        )
+        let configuration = AlarmKit.AlarmManager.AlarmConfiguration<WakeFlowAlarmMetadata>.alarm(
+            schedule: AlarmKit.Alarm.Schedule.fixed(fireDate),
+            attributes: attributes,
+            secondaryIntent: OpenWakeFlowFromAlarmSpikeIntent(),
+            sound: .default
+        )
+
+        do {
+            let scheduledAlarm = try await alarmManager.schedule(id: spikeAlarmID, configuration: configuration)
+            defaults.set(spikeAlarmID.uuidString, forKey: AlarmKitSpikeDefaults.pendingAlarmIDKey)
+            defaults.set(spikeType, forKey: AlarmKitSpikeDefaults.activeAlarmKitSpikeTypeKey)
+            defaults.synchronize()
+            AlarmKitSpikeDefaults.appendLog("\(logPrefix): scheduled AlarmKit alarm \(spikeAlarmID) for \(fireDate), initial state \(scheduledAlarm.state)")
+        } catch {
+            AlarmKitSpikeDefaults.appendLog("\(logPrefix): AlarmKit schedule failed for \(spikeAlarmID): \(error)")
+        }
+    }
+
+    private func schedulePlainNotificationSpike(fireDate: Date, spikeType: String, logPrefix: String) async {
+        guard #available(iOS 26.0, *) else { return }
+
+        let defaults = AlarmKitSpikeDefaults.defaults
+        defaults.synchronize()
+
+        AlarmKitSpikeDefaults.appendLog("\(logPrefix): plain notification schedule requested")
+        clearPendingPlainNotificationSpike(logPrefix: logPrefix, shouldLogMissing: false)
+
+        guard await ensurePlainNotificationAuthorization(logPrefix: logPrefix) else {
+            return
+        }
+
+        let identifier = "plain-notification-spike-\(UUID().uuidString)"
+        let content = UNMutableNotificationContent()
+        content.title = "Plain Notification Spike"
+        content.body = "Plain Notification Spike Test"
+        content.sound = nil
+        content.interruptionLevel = .timeSensitive
+        content.userInfo = ["spikeType": spikeType]
+
+        let fireComponents = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second],
+            from: fireDate
+        )
+        let trigger = UNCalendarNotificationTrigger(dateMatching: fireComponents, repeats: false)
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+        let addErrorMessage: String? = await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().add(request) { error in
+                continuation.resume(returning: error?.localizedDescription)
+            }
+        }
+
+        if let addErrorMessage {
+            AlarmKitSpikeDefaults.appendLog("\(logPrefix): plain notification schedule failed for \(identifier): \(addErrorMessage)")
+            return
+        }
+
+        defaults.set(identifier, forKey: AlarmKitSpikeDefaults.pendingPlainNotificationIDKey)
+        defaults.set(fireDate.timeIntervalSince1970, forKey: AlarmKitSpikeDefaults.pendingPlainNotificationFireDateKey)
+        defaults.synchronize()
+
+        AlarmKitSpikeDefaults.appendLog("\(logPrefix): scheduled plain notification \(identifier) for \(fireDate), spikeType=\(spikeType), sound=nil")
+    }
+
+    private func cancelAlarmKitSpike() {
+        guard #available(iOS 26.0, *) else { return }
+
+        let defaults = AlarmKitSpikeDefaults.defaults
+        defaults.synchronize()
+
+        guard let pendingAlarmIDString = defaults.string(forKey: AlarmKitSpikeDefaults.pendingAlarmIDKey),
+              let pendingAlarmID = UUID(uuidString: pendingAlarmIDString) else {
+            AlarmKitSpikeDefaults.appendLog("AlarmKit Spike: cancel requested but no pending alarm ID was stored")
+            return
+        }
+
+        do {
+            try AlarmKit.AlarmManager.shared.cancel(id: pendingAlarmID)
+            AlarmKitSpikeDefaults.appendLog("AlarmKit Spike: Cancel Spike Alarm canceled \(pendingAlarmID)")
+        } catch {
+            AlarmKitSpikeDefaults.appendLog("AlarmKit Spike: Cancel Spike Alarm failed for \(pendingAlarmID): \(error)")
+        }
+
+        defaults.removeObject(forKey: AlarmKitSpikeDefaults.pendingAlarmIDKey)
+        defaults.removeObject(forKey: AlarmKitSpikeDefaults.activeAlarmKitSpikeTypeKey)
+        defaults.synchronize()
+    }
+
+    private func cancelPlainNotificationSpike() {
+        guard #available(iOS 26.0, *) else { return }
+
+        clearPendingPlainNotificationSpike(
+            logPrefix: "Plain Notification Spike",
+            shouldLogMissing: true
+        )
+    }
+
+    private func clearPendingPlainNotificationSpike(logPrefix: String, shouldLogMissing: Bool) {
+        let defaults = AlarmKitSpikeDefaults.defaults
+        defaults.synchronize()
+
+        guard let identifier = defaults.string(forKey: AlarmKitSpikeDefaults.pendingPlainNotificationIDKey) else {
+            if shouldLogMissing {
+                AlarmKitSpikeDefaults.appendLog("\(logPrefix): cancel requested but no pending plain notification ID was stored")
+            }
+            defaults.removeObject(forKey: AlarmKitSpikeDefaults.pendingPlainNotificationFireDateKey)
+            defaults.synchronize()
+            return
+        }
+
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+        defaults.removeObject(forKey: AlarmKitSpikeDefaults.pendingPlainNotificationIDKey)
+        defaults.removeObject(forKey: AlarmKitSpikeDefaults.pendingPlainNotificationFireDateKey)
+        defaults.synchronize()
+
+        AlarmKitSpikeDefaults.appendLog("\(logPrefix): removed pending/delivered plain notification \(identifier)")
+    }
+
+    private func ensurePlainNotificationAuthorization(logPrefix: String) async -> Bool {
+        let center = UNUserNotificationCenter.current()
+        let settings = await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                continuation.resume(returning: settings)
+            }
+        }
+
+        switch settings.authorizationStatus {
+        case .notDetermined:
+            let result = await withCheckedContinuation { continuation in
+                center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+                    continuation.resume(returning: (granted, error?.localizedDescription))
+                }
+            }
+            if let errorMessage = result.1 {
+                AlarmKitSpikeDefaults.appendLog("\(logPrefix): notification authorization request failed: \(errorMessage)")
+            }
+            guard result.0 else {
+                AlarmKitSpikeDefaults.appendLog("\(logPrefix): notification authorization denied")
+                return false
+            }
+            AlarmKitSpikeDefaults.appendLog("\(logPrefix): notification authorization granted")
+            return true
+        case .authorized, .provisional, .ephemeral:
+            AlarmKitSpikeDefaults.appendLog("\(logPrefix): notification authorization state before scheduling = \(settings.authorizationStatus)")
+            return true
+        case .denied:
+            AlarmKitSpikeDefaults.appendLog("\(logPrefix): notification authorization denied/restricted — open Settings to grant")
+            return false
+        @unknown default:
+            AlarmKitSpikeDefaults.appendLog("\(logPrefix): notification authorization unknown state \(settings.authorizationStatus)")
+            return false
+        }
+    }
+#endif
 }
 
 // MARK: - Swipeable Alarm Row
@@ -2089,9 +2857,9 @@ struct SwipeableAlarmRow: View {
                     
                     // Direktes Aktivieren/Deaktivieren OHNE NFC!
                     if newValue {
-                        print("🔵 Toggle: Aktivierung (ohne NFC)")
+                        Logger.alarm.debug("Toggle: Aktivierung (ohne NFC)")
                     } else {
-                        print("⚪️ Toggle: Deaktivierung (ohne NFC)")
+                        Logger.alarm.debug("Toggle: Deaktivierung (ohne NFC)")
                     }
                     
                     // Immer Callback aufrufen
@@ -2102,7 +2870,7 @@ struct SwipeableAlarmRow: View {
                 .onChange(of: alarm.isEnabled) { newValue in
                     // Synchronisiere lokalIsEnabled mit tatsächlichem Alarm-State
                     localIsEnabled = newValue
-                    print("🔄 Toggle-State synchronisiert: \(newValue)")
+                    Logger.alarm.debug("Toggle-State synchronisiert: \(newValue, privacy: .public)")
                 }
                 .gesture(
                     DragGesture()
@@ -2428,7 +3196,7 @@ struct AddAlarmView: View {
             .onChange(of: selectedSound) { _ in
                 // Sound gewechselt → Stoppe alte Vorschau
                 stopPreview()
-                print("🔄 Sound gewechselt → Vorschau gestoppt")
+                Logger.lifecycle.debug("Sound gewechselt → Vorschau gestoppt")
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -2441,7 +3209,7 @@ struct AddAlarmView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Sichern") {
-                        print("💾 Speichere Alarm mit Sound: \(selectedSound)")
+                        Logger.alarm.debug("Speichere Alarm mit Sound: \(selectedSound, privacy: .public)")
                         
                         let newAlarm = Alarm(
                             time: selectedTime,
@@ -2452,9 +3220,9 @@ struct AddAlarmView: View {
                             volume: volumeToInternal(selectedVolume) // UI 0-100% → Intern 0.5-1.0
                         )
                         
-                        print("💾 Alarm erstellt - Sound: \(newAlarm.soundName)")
-                        print("🔊 Lautstärke: \(volumeToInternal(selectedVolume)) (0.25-0.8)")
-                        print("📡 NFC-Scan erforderlich zum Aktivieren")
+                        Logger.alarm.info("Alarm erstellt - Sound: \(newAlarm.soundName, privacy: .public)")
+                        Logger.alarm.debug("Lautstärke: \(volumeToInternal(selectedVolume), privacy: .public) (0.25-0.8)")
+                        Logger.nfc.debug("NFC-Scan erforderlich zum Aktivieren")
                         
                         dismiss()
                         onSave(newAlarm)
@@ -2477,7 +3245,7 @@ struct AddAlarmView: View {
             forResource: selectedSound.replacingOccurrences(of: ".caf", with: ""),
             withExtension: "caf"
         ) else {
-            print("❌ Vorschau Sound nicht gefunden: \(selectedSound)")
+            Logger.alarm.error("Vorschau Sound nicht gefunden: \(selectedSound, privacy: .public)")
             return
         }
         
@@ -2493,9 +3261,9 @@ struct AddAlarmView: View {
             previewPlayer?.volume = 1.0 // Maximum (System-Volume regelt die Lautstärke)
             previewPlayer?.play()
             isPlayingPreview = true
-            print("▶️ Vorschau: Sound \(selectedSound), Intern \(Int(internalVolume * 100))%, System-Slider \(Int(scaledVolume * 100))%")
+            Logger.alarm.debug("Vorschau: Sound \(selectedSound, privacy: .public), Intern \(Int(internalVolume * 100), privacy: .public)%, System-Slider \(Int(scaledVolume * 100), privacy: .public)%")
         } catch {
-            print("❌ Vorschau Fehler: \(error)")
+            Logger.alarm.error("Vorschau Fehler: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -2503,14 +3271,14 @@ struct AddAlarmView: View {
         previewPlayer?.stop()
         previewPlayer = nil
         isPlayingPreview = false
-        print("⏹️ Vorschau gestoppt")
+        Logger.alarm.debug("Vorschau gestoppt")
     }
     
     private func updatePreviewVolume() {
         let internalVolume = volumeToInternal(selectedVolume)
         let scaledVolume = internalToSystemVolume(internalVolume)
         setSystemVolume(scaledVolume)
-        print("🔊 Lautstärke: Intern \(Int(internalVolume * 100))%, System \(Int(scaledVolume * 100))%")
+        Logger.alarm.debug("Lautstärke: Intern \(Int(internalVolume * 100), privacy: .public)%, System \(Int(scaledVolume * 100), privacy: .public)%")
     }
     
     private func setSystemVolume(_ volume: Float) {
@@ -2717,7 +3485,7 @@ struct EditAlarmView: View {
             .onChange(of: selectedSound) { _ in
                 // Sound gewechselt → Stoppe alte Vorschau
                 stopPreview()
-                print("🔄 Sound gewechselt → Vorschau gestoppt")
+                Logger.lifecycle.debug("Sound gewechselt → Vorschau gestoppt")
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -2730,8 +3498,8 @@ struct EditAlarmView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Sichern") {
-                        print("✏️ Bearbeite Alarm - Alter Sound: \(alarm.soundName)")
-                        print("✏️ Bearbeite Alarm - Neuer Sound: \(selectedSound)")
+                        Logger.alarm.debug("Bearbeite Alarm - Alter Sound: \(alarm.soundName, privacy: .public)")
+                        Logger.alarm.debug("Bearbeite Alarm - Neuer Sound: \(selectedSound, privacy: .public)")
                         
                         var updatedAlarm = alarm
                         updatedAlarm.time = selectedTime
@@ -2740,9 +3508,9 @@ struct EditAlarmView: View {
                         updatedAlarm.soundName = selectedSound
                         updatedAlarm.volume = volumeToInternal(selectedVolume) // UI 0-100% → Intern 0.5-1.0
                         
-                        print("✏️ Alarm gespeichert - Sound jetzt: \(updatedAlarm.soundName)")
-                        print("🔊 Lautstärke: \(volumeToInternal(selectedVolume)) (0.25-0.8)")
-                        print("📡 NFC-Scan erforderlich zum Aktivieren")
+                        Logger.alarm.info("Alarm gespeichert - Sound jetzt: \(updatedAlarm.soundName, privacy: .public)")
+                        Logger.alarm.debug("Lautstärke: \(volumeToInternal(selectedVolume), privacy: .public) (0.25-0.8)")
+                        Logger.nfc.debug("NFC-Scan erforderlich zum Aktivieren")
                         
                         dismiss()
                         onSave(updatedAlarm)
@@ -2765,7 +3533,7 @@ struct EditAlarmView: View {
             forResource: selectedSound.replacingOccurrences(of: ".caf", with: ""),
             withExtension: "caf"
         ) else {
-            print("❌ Vorschau Sound nicht gefunden: \(selectedSound)")
+            Logger.alarm.error("Vorschau Sound nicht gefunden: \(selectedSound, privacy: .public)")
             return
         }
         
@@ -2781,9 +3549,9 @@ struct EditAlarmView: View {
             previewPlayer?.volume = 1.0 // Maximum (System-Volume regelt die Lautstärke)
             previewPlayer?.play()
             isPlayingPreview = true
-            print("▶️ Vorschau: Sound \(selectedSound), Intern \(Int(internalVolume * 100))%, System-Slider \(Int(scaledVolume * 100))%")
+            Logger.alarm.debug("Vorschau: Sound \(selectedSound, privacy: .public), Intern \(Int(internalVolume * 100), privacy: .public)%, System-Slider \(Int(scaledVolume * 100), privacy: .public)%")
         } catch {
-            print("❌ Vorschau Fehler: \(error)")
+            Logger.alarm.error("Vorschau Fehler: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -2791,14 +3559,14 @@ struct EditAlarmView: View {
         previewPlayer?.stop()
         previewPlayer = nil
         isPlayingPreview = false
-        print("⏹️ Vorschau gestoppt")
+        Logger.alarm.debug("Vorschau gestoppt")
     }
     
     private func updatePreviewVolume() {
         let internalVolume = volumeToInternal(selectedVolume)
         let scaledVolume = internalToSystemVolume(internalVolume)
         setSystemVolume(scaledVolume)
-        print("🔊 Lautstärke: Intern \(Int(internalVolume * 100))%, System \(Int(scaledVolume * 100))%")
+        Logger.alarm.debug("Lautstärke: Intern \(Int(internalVolume * 100), privacy: .public)%, System \(Int(scaledVolume * 100), privacy: .public)%")
     }
     
     private func setSystemVolume(_ volume: Float) {
@@ -2878,7 +3646,7 @@ struct NFCActivationView: View {
                     // NFC SCAN Button (nur anzeigen wenn NFC fehlgeschlagen ist)
                     if showError {
                         Button(action: {
-                            print("🔵 NFC Button gedrückt (erneuter Versuch)")
+                            Logger.nfc.debug("NFC Button gedrückt (erneuter Versuch)")
                             
                             if NFCNDEFReaderSession.readingAvailable {
                                 showError = false
@@ -2924,17 +3692,17 @@ struct NFCActivationView: View {
         .preferredColorScheme(.dark)
         .onChange(of: nfcReader.isScanned) { isScanned in
             if isScanned {
-                print("✅ NFC gescannt - Alarm wird aktiviert")
+                Logger.nfc.notice("NFC gescannt - Alarm wird aktiviert")
                 isPresented = false
                 onSuccess()
             }
         }
         .onAppear {
-            print("📡 NFCActivationView geladen für: \(alarmLabel)")
+            Logger.nfc.debug("NFCActivationView geladen für: \(alarmLabel, privacy: .public)")
             
             // Starte NFC-Scan AUTOMATISCH beim Erscheinen
             if NFCNDEFReaderSession.readingAvailable {
-                print("🚀 NFC-Scan startet automatisch...")
+                Logger.nfc.info("NFC-Scan startet automatisch")
                 // Kleine Verzögerung für bessere UX
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     nfcReader.startScanning(actionType: .activate)
@@ -2942,7 +3710,7 @@ struct NFCActivationView: View {
             } else {
                 showError = true
                 errorMessage = "NFC wird auf diesem Gerät nicht unterstützt."
-                print("❌ NFC nicht verfügbar auf diesem Gerät")
+                Logger.nfc.error("NFC nicht verfügbar auf diesem Gerät")
             }
         }
     }
@@ -3010,15 +3778,15 @@ struct AlarmStopView: View {
                 // NFC SCAN Button (nur anzeigen wenn NFC fehlgeschlagen ist)
                 if showError {
                     Button(action: {
-                        print("🔵 NFC Button gedrückt (erneuter Versuch)")
-                        print("🔍 NFC verfügbar: \(NFCNDEFReaderSession.readingAvailable)")
+                        Logger.nfc.debug("NFC Button gedrückt (erneuter Versuch)")
+                        Logger.nfc.debug("NFC verfügbar: \(NFCNDEFReaderSession.readingAvailable, privacy: .public)")
                         
                         if NFCNDEFReaderSession.readingAvailable {
                             showError = false
                             nfcReader.startScanning(actionType: .deactivate)
                         } else {
                             errorMessage = "NFC wird auf diesem Gerät nicht unterstützt.\nBenötigt iPhone 7 oder neuer."
-                            print("❌ NFC nicht verfügbar")
+                            Logger.nfc.error("NFC nicht verfügbar")
                         }
                     }) {
                         HStack(spacing: 15) {
@@ -3042,7 +3810,7 @@ struct AlarmStopView: View {
                 // DEBUG: Skip Button (nur für Tests)
                 #if DEBUG
                 Button(action: {
-                    print("⚠️ DEBUG: Alarm wird ohne NFC gestoppt")
+                    Logger.alarm.notice("DEBUG: Alarm wird ohne NFC gestoppt")
                     onAlarmStopped(alarmIDBeforeStop)
                     backgroundAlarmManager.stopAlarm()
                     isPresented = false
@@ -3062,7 +3830,7 @@ struct AlarmStopView: View {
         .onChange(of: nfcReader.isScanned) { isScanned in
             if isScanned {
                 // NFC erkannt → Alarm stoppen!
-                print("✅ NFC gescannt - Alarm wird gestoppt")
+                Logger.nfc.notice("NFC gescannt - Alarm wird gestoppt")
                 
                 // Callback ZUERST aufrufen (bevor stopAlarm() die ID löscht)
                 onAlarmStopped(alarmIDBeforeStop)
@@ -3074,12 +3842,12 @@ struct AlarmStopView: View {
         .onAppear {
             // Speichere die Alarm-ID BEVOR sie durch stopAlarm() gelöscht wird
             alarmIDBeforeStop = backgroundAlarmManager.getCurrentAlarmID()
-            print("📱 AlarmStopView geladen - Alarm ID: \(alarmIDBeforeStop?.uuidString ?? "nil")")
-            print("📡 NFC verfügbar: \(NFCNDEFReaderSession.readingAvailable)")
+            Logger.nfc.debug("AlarmStopView geladen - Alarm ID: \(alarmIDBeforeStop?.uuidString ?? "nil", privacy: .public)")
+            Logger.nfc.debug("NFC verfügbar: \(NFCNDEFReaderSession.readingAvailable, privacy: .public)")
             
             // Starte NFC-Scan AUTOMATISCH beim Erscheinen
             if NFCNDEFReaderSession.readingAvailable {
-                print("🚀 NFC-Scan startet automatisch (Alarm stoppen)...")
+                Logger.nfc.info("NFC-Scan startet automatisch (Alarm stoppen)")
                 // Kleine Verzögerung für bessere UX
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     nfcReader.startScanning(actionType: .deactivate)
@@ -3087,7 +3855,7 @@ struct AlarmStopView: View {
             } else {
                 showError = true
                 errorMessage = "NFC wird auf diesem Gerät nicht unterstützt.\nBenötigt iPhone 7 oder neuer."
-                print("❌ NFC nicht verfügbar auf diesem Gerät")
+                Logger.nfc.error("NFC nicht verfügbar auf diesem Gerät")
             }
         }
     }
@@ -3109,7 +3877,7 @@ struct SoundPickerView: View {
             List {
                 ForEach(availableSounds, id: \.file) { sound in
                     Button(action: {
-                        print("🎵 Sound ausgewählt: \(sound.file) (\(sound.name))")
+                        Logger.alarm.debug("Sound ausgewählt: \(sound.file, privacy: .public) (\(sound.name, privacy: .public))")
                         selectedSound = sound.file
                         // Spiele den Sound in Endlosschleife ab
                         previewPlayer.playSound(sound.file)
@@ -3142,7 +3910,7 @@ struct SoundPickerView: View {
         .onDisappear {
             // Stoppe den Sound wenn man zurück navigiert
             previewPlayer.stop()
-            print("🛑 Sound-Vorschau gestoppt")
+            Logger.alarm.debug("Sound-Vorschau gestoppt")
         }
     }
 }
@@ -3173,7 +3941,7 @@ class SoundPreviewPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
     
     private func setSystemVolume(_ volume: Float) {
         volumeSlider?.value = volume
-        print("🔊 Systemlautstärke gesetzt auf: \(volume)")
+        Logger.alarm.debug("Systemlautstärke gesetzt auf: \(volume, privacy: .public)")
     }
     
     func playSound(_ soundFile: String) {
@@ -3181,14 +3949,14 @@ class SoundPreviewPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         stop()
         
         guard let url = Bundle.main.url(forResource: soundFile, withExtension: nil) else {
-            print("❌ Sound-Datei nicht gefunden: \(soundFile)")
+            Logger.alarm.error("Sound-Datei nicht gefunden: \(soundFile, privacy: .public)")
             return
         }
         
         do {
             // Speichere aktuelle Lautstärke
             originalVolume = AVAudioSession.sharedInstance().outputVolume
-            print("💾 Original-Lautstärke gespeichert: \(originalVolume)")
+            Logger.alarm.debug("Original-Lautstärke gespeichert: \(self.originalVolume, privacy: .public)")
             
             // Konfiguriere Audio Session für Vorschau
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
@@ -3205,9 +3973,9 @@ class SoundPreviewPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
             audioPlayer?.prepareToPlay()
             audioPlayer?.play()
             
-            print("▶️ Sound-Vorschau gestartet: \(soundFile) bei 0.4 Systemlautstärke")
+            Logger.alarm.debug("Sound-Vorschau gestartet: \(soundFile, privacy: .public) bei 0.4 Systemlautstärke")
         } catch {
-            print("❌ Fehler beim Abspielen der Vorschau: \(error.localizedDescription)")
+            Logger.alarm.error("Fehler beim Abspielen der Vorschau: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -3217,7 +3985,7 @@ class SoundPreviewPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         
         // Stelle ursprüngliche Lautstärke wieder her
         setSystemVolume(originalVolume)
-        print("🔄 Original-Lautstärke wiederhergestellt: \(originalVolume)")
+        Logger.alarm.debug("Original-Lautstärke wiederhergestellt: \(self.originalVolume, privacy: .public)")
     }
 }
 
@@ -3311,7 +4079,7 @@ struct MoonView: View {
             // BEVOR irgendwas anderes passiert. Genau wie im NFC-Flow
             // (AlarmStopView.onAppear). Sonst ist sie nach stopAlarm() nil.
             alarmIDBeforeStop = backgroundAlarmManager.getCurrentAlarmID()
-            print("📱 MoonView geladen - Alarm ID: \(alarmIDBeforeStop?.uuidString ?? "nil")")
+            Logger.lifecycle.debug("MoonView geladen - Alarm ID: \(alarmIDBeforeStop?.uuidString ?? "nil", privacy: .public)")
 
             // Starte pulsierende Animation - subtiler
             withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
@@ -3344,7 +4112,7 @@ struct MoonView: View {
 
     #if ENABLE_NFC
     private func stopAlarmWithNFC() {
-        print("🌙 Mond gedrückt - Stoppe Alarm mit NFC...")
+        Logger.alarm.notice("Mond gedrückt - Stoppe Alarm mit NFC")
 
         // Haptic Feedback
         let generator = UIImpactFeedbackGenerator(style: .heavy)
@@ -3353,7 +4121,7 @@ struct MoonView: View {
         if NFCNDEFReaderSession.readingAvailable {
             nfcReader.startScanning(actionType: .deactivate)
         } else {
-            print("❌ NFC nicht verfügbar auf diesem Gerät")
+            Logger.nfc.error("NFC nicht verfügbar auf diesem Gerät")
         }
     }
     #endif
@@ -3362,7 +4130,7 @@ struct MoonView: View {
         // 1:1 Nachbau des NFC-Stop-Flows (AlarmStopView.onChange).
         // Reihenfolge ist KRITISCH und muss exakt mit dem Original übereinstimmen.
 
-        print("✅ Stop-Button gedrückt - Alarm wird gestoppt")
+        Logger.alarm.notice("Stop-Button gedrückt - Alarm wird gestoppt")
 
         // Pre-Stop Haptic (wie stopAlarmWithNFC vor dem Scan)
         let impactGenerator = UIImpactFeedbackGenerator(style: .heavy)
@@ -3476,7 +4244,7 @@ struct SettingsView: View {
             backgroundManager.scheduleReminderNotification(at: sleepTime)
         }
         
-        print("💾 Schlafenszeit gespeichert: \(sleepTime.formatted(date: .omitted, time: .shortened))")
+        Logger.lifecycle.debug("Schlafenszeit gespeichert: \(sleepTime.formatted(date: .omitted, time: .shortened), privacy: .public)")
     }
     
     private func loadSleepTime() {

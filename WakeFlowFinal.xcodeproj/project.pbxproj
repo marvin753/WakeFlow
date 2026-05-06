@@ -36,6 +36,9 @@
 		CE32AD0A2F88322A0019E259 /* AlarmKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AlarmKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk/System/Library/Frameworks/AlarmKit.framework; sourceTree = DEVELOPER_DIR; };
 		CE32B04C2F883F700019E259 /* WakeFlowFinal.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = WakeFlowFinal.xcodeproj; sourceTree = "<group>"; };
 		CE32B3B62F8ECE0B0019E259 /* WakeFlowFinal.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = WakeFlowFinal.xcodeproj; sourceTree = "<group>"; };
+		CE6E0E0C2FA1296A00306CCB /* WakeFlowFinal.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = WakeFlowFinal.xcodeproj; sourceTree = "<group>"; };
+		CE6E100B2FA8983F00306CCB /* WakeFlowFinal.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = WakeFlowFinal.xcodeproj; sourceTree = "<group>"; };
+		CE6E1EBB2FA89C9100306CCB /* WakeFlowFinal.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = WakeFlowFinal.xcodeproj; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -135,6 +138,27 @@
 			sourceTree = "<group>";
 		};
 		CE32B3B72F8ECE0B0019E259 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		CE6E0E0D2FA1296A00306CCB /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		CE6E100C2FA8983F00306CCB /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		CE6E1EBC2FA89C9100306CCB /* Products */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -255,8 +279,20 @@
 					ProjectRef = CE32AC3D2F882BDC0019E259 /* WakeFlowFinal.xcodeproj */;
 				},
 				{
+					ProductGroup = CE6E100C2FA8983F00306CCB /* Products */;
+					ProjectRef = CE6E100B2FA8983F00306CCB /* WakeFlowFinal.xcodeproj */;
+				},
+				{
+					ProductGroup = CE6E1EBC2FA89C9100306CCB /* Products */;
+					ProjectRef = CE6E1EBB2FA89C9100306CCB /* WakeFlowFinal.xcodeproj */;
+				},
+				{
 					ProductGroup = CE32B3B72F8ECE0B0019E259 /* Products */;
 					ProjectRef = CE32B3B62F8ECE0B0019E259 /* WakeFlowFinal.xcodeproj */;
+				},
+				{
+					ProductGroup = CE6E0E0D2FA1296A00306CCB /* Products */;
+					ProjectRef = CE6E0E0C2FA1296A00306CCB /* WakeFlowFinal.xcodeproj */;
 				},
 			);
 			projectRoot = "";
