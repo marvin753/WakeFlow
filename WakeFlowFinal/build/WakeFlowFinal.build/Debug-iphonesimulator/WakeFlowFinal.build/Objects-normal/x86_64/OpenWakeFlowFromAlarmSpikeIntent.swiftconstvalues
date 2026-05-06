@@ -1,0 +1,130 @@
+[
+  {
+    "typeName": "WakeFlowFinal.OpenWakeFlowFromAlarmSpikeIntent",
+    "mangledTypeName": "13WakeFlowFinal04OpenaB20FromAlarmSpikeIntentV",
+    "kind": "struct",
+    "file": "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/WakeFlowFinal/OpenWakeFlowFromAlarmSpikeIntent.swift",
+    "line": 101,
+    "conformances": [
+      "AppIntents.LiveActivityIntent",
+      "AppIntents.SystemIntent",
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "allConformances": [
+      {
+        "protocolName": "AppIntents.LiveActivityIntent",
+        "conformanceDefiningModule": "WakeFlowFinal"
+      },
+      {
+        "protocolName": "AppIntents.SystemIntent",
+        "conformanceDefiningModule": "WakeFlowFinal"
+      },
+      {
+        "protocolName": "AppIntents.AppIntent",
+        "conformanceDefiningModule": "WakeFlowFinal"
+      },
+      {
+        "protocolName": "AppIntents.PersistentlyIdentifiable",
+        "conformanceDefiningModule": "WakeFlowFinal"
+      },
+      {
+        "protocolName": "AppIntents._SupportsAppDependencies",
+        "conformanceDefiningModule": "WakeFlowFinal"
+      },
+      {
+        "protocolName": "Swift.Sendable",
+        "conformanceDefiningModule": "WakeFlowFinal"
+      },
+      {
+        "protocolName": "Swift.SendableMetatype",
+        "conformanceDefiningModule": "WakeFlowFinal"
+      },
+      {
+        "protocolName": "Swift.BitwiseCopyable",
+        "conformanceDefiningModule": "WakeFlowFinal"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "typeAliasName": "PerformResult",
+        "substitutedTypeName": "some AppIntents.IntentResult",
+        "substitutedMangledTypeName": "13WakeFlowFinal04OpenaB20FromAlarmSpikeIntentV7performQryYaKFQOy_Qo_",
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.IntentResult"
+        ],
+        "opaqueTypeSameTypeRequirements": []
+      },
+      {
+        "typeAliasName": "SummaryContent",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "substitutedMangledTypeName": "10AppIntents0A6IntentPAAE16parameterSummaryQrvpZQOy13WakeFlowFinal04Openfg14FromAlarmSpikeC0V_Qo_",
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": []
+      }
+    ],
+    "properties": [
+      {
+        "label": "title",
+        "type": "Foundation.LocalizedStringResource",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "true",
+        "isComputed": "true",
+        "file": "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/WakeFlowFinal/OpenWakeFlowFromAlarmSpikeIntent.swift",
+        "line": 102,
+        "valueKind": "RawLiteral",
+        "value": "WakeFlow öffnen"
+      },
+      {
+        "label": "supportedModes",
+        "type": "AppIntents.IntentModes",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "true",
+        "isComputed": "true",
+        "file": "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/WakeFlowFinal/OpenWakeFlowFromAlarmSpikeIntent.swift",
+        "line": 106,
+        "valueKind": "StaticFunctionCall",
+        "value": {
+          "type": "AppIntents.IntentModes",
+          "memberLabel": "foreground",
+          "arguments": [
+            {
+              "label": "",
+              "type": "AppIntents.IntentModes.ForegroundMode",
+              "valueKind": "MemberReference",
+              "value": {
+                "baseType": "AppIntents.IntentModes.ForegroundMode",
+                "memberLabel": "immediate"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "label": "openAppWhenRun",
+        "type": "Swift.Bool",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "true",
+        "isComputed": "true",
+        "file": "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/WakeFlowFinal/OpenWakeFlowFromAlarmSpikeIntent.swift",
+        "line": 110,
+        "valueKind": "RawLiteral",
+        "value": "true"
+      }
+    ],
+    "availabilityAttributes": [
+      {
+        "platform": "iOS",
+        "introducedVersion": "26.0",
+        "isUnavailable": false,
+        "isDeprecated": false
+      }
+    ]
+  }
+]

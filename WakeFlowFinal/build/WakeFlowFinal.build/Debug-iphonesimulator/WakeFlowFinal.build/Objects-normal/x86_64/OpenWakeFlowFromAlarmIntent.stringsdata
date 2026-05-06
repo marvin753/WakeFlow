@@ -1,0 +1,24 @@
+{
+  "source": "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/WakeFlowFinal/OpenWakeFlowFromAlarmIntent.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "WakeFlow öffnen",
+        "location": {
+          "startingColumn": 9,
+          "startingLine": 18
+        }
+      },
+      {
+        "comment": "",
+        "key": "alarmID",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 29
+        }
+      }
+    ]
+  },
+  "version": 1
+}

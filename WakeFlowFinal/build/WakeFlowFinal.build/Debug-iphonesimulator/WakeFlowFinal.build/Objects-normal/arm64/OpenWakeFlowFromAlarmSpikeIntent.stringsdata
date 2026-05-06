@@ -1,0 +1,40 @@
+{
+  "source": "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/WakeFlowFinal/OpenWakeFlowFromAlarmSpikeIntent.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "WakeFlow öffnen",
+        "location": {
+          "startingColumn": 9,
+          "startingLine": 103
+        }
+      },
+      {
+        "comment": "",
+        "key": "Spike Log",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 273
+        }
+      },
+      {
+        "comment": "",
+        "key": "Spike Type",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 257
+        }
+      },
+      {
+        "comment": "",
+        "key": "Fertig",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 276
+        }
+      }
+    ]
+  },
+  "version": 1
+}

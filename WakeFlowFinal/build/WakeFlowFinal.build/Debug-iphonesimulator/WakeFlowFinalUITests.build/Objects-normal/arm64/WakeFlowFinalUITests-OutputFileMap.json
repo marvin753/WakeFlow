@@ -1,0 +1,29 @@
+{
+  "" : {
+    "diagnostics" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests-primary.dia",
+    "emit-module-dependencies" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests-primary-emit-module.dia",
+    "pch" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests-primary.swiftdeps"
+  },
+  "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/WakeFlowFinalUITests/WakeFlowFinalUITests.swift" : {
+    "const-values" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests.swiftconstvalues",
+    "dependencies" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests.d",
+    "diagnostics" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests.dia",
+    "index-unit-output-path" : "/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests.o",
+    "llvm-bc" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests.bc",
+    "object" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests.o",
+    "swift-dependencies" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests.swiftdeps",
+    "swiftmodule" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITests~partial.swiftmodule"
+  },
+  "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/WakeFlowFinalUITests/WakeFlowFinalUITestsLaunchTests.swift" : {
+    "const-values" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITestsLaunchTests.swiftconstvalues",
+    "dependencies" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITestsLaunchTests.d",
+    "diagnostics" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITestsLaunchTests.dia",
+    "index-unit-output-path" : "/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITestsLaunchTests.o",
+    "llvm-bc" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITestsLaunchTests.bc",
+    "object" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITestsLaunchTests.o",
+    "swift-dependencies" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITestsLaunchTests.swiftdeps",
+    "swiftmodule" : "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/build/WakeFlowFinal.build/Debug-iphonesimulator/WakeFlowFinalUITests.build/Objects-normal/arm64/WakeFlowFinalUITestsLaunchTests~partial.swiftmodule"
+  }
+}

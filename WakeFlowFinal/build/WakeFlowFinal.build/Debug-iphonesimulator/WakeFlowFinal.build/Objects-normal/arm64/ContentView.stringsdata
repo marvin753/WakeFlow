@@ -1,0 +1,496 @@
+{
+  "source": "/Users/marvinbarsal/Desktop/Gaming/WakeFlow/WakeFlowFinal/WakeFlowFinal/ContentView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Phantom Log",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 220
+        }
+      },
+      {
+        "comment": "",
+        "key": "Schließen",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 224
+        }
+      },
+      {
+        "comment": "",
+        "key": "Leeren",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 233
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stoppen",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 1297
+        }
+      },
+      {
+        "comment": "",
+        "key": "WakeFlow öffnen",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 1302
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pro",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 2065
+        }
+      },
+      {
+        "comment": "",
+        "key": "Wecker",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2061
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pro",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2071
+        }
+      },
+      {
+        "comment": "",
+        "key": "Einstellungen",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2079
+        }
+      },
+      {
+        "comment": "",
+        "key": "Wecker",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2355
+        }
+      },
+      {
+        "comment": "",
+        "key": "AlarmKit Spike",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 2393
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel Spike Alarm",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 2400
+        }
+      },
+      {
+        "comment": "",
+        "key": "Plain Notification Spike",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 2405
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel Plain Notification",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 2412
+        }
+      },
+      {
+        "comment": "",
+        "key": "Combined Spike",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 2417
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show Spike Log",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 2424
+        }
+      },
+      {
+        "comment": "",
+        "key": "Keine Wecker",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 2443
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stoppen",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 2617
+        }
+      },
+      {
+        "comment": "",
+        "key": "WakeFlow öffnen",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 2622
+        }
+      },
+      {
+        "comment": "",
+        "key": "AlarmKit Spike",
+        "location": {
+          "startingColumn": 59,
+          "startingLine": 2627
+        }
+      },
+      {
+        "comment": "",
+        "key": "Löschen",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 2838
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 2993
+        }
+      },
+      {
+        "comment": "",
+        "key": "Wecker hinzufügen",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 3192
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 3055
+        }
+      },
+      {
+        "comment": "",
+        "key": "Wiederholen",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 3066
+        }
+      },
+      {
+        "comment": "",
+        "key": "Bezeichnung",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 3105
+        }
+      },
+      {
+        "comment": "",
+        "key": "Wecker",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 3110
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sound",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 3123
+        }
+      },
+      {
+        "comment": "",
+        "key": "Lautstärke",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 3145
+        }
+      },
+      {
+        "comment": "",
+        "key": "Abbrechen",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 3204
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sichern",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 3211
+        }
+      },
+      {
+        "comment": "",
+        "key": "Wecker bearbeiten",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 3481
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 3344
+        }
+      },
+      {
+        "comment": "",
+        "key": "Wiederholen",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 3355
+        }
+      },
+      {
+        "comment": "",
+        "key": "Bezeichnung",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 3394
+        }
+      },
+      {
+        "comment": "",
+        "key": "Wecker",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 3399
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sound",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 3412
+        }
+      },
+      {
+        "comment": "",
+        "key": "Lautstärke",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 3434
+        }
+      },
+      {
+        "comment": "",
+        "key": "Abbrechen",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 3493
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sichern",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 3500
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sound",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 3905
+        }
+      },
+      {
+        "comment": "",
+        "key": "✅ Alarm gestoppt!",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 4054
+        }
+      },
+      {
+        "comment": "",
+        "key": "🔔 Wecker klingelt",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 4060
+        }
+      },
+      {
+        "comment": "",
+        "key": "Tippe auf den Mond um den Alarm zu stoppen",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 4064
+        }
+      },
+      {
+        "comment": "",
+        "key": "Einstellungen",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 4222
+        }
+      },
+      {
+        "comment": "",
+        "key": "Schlafenszeit gespeichert",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 4224
+        }
+      },
+      {
+        "comment": "",
+        "key": "🌙 Schlafenszeit",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 4167
+        }
+      },
+      {
+        "comment": "",
+        "key": "💡 Infobox",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 4187
+        }
+      },
+      {
+        "comment": "",
+        "key": "🔊 Backup-System",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 4207
+        }
+      },
+      {
+        "comment": "",
+        "key": "Du wirst täglich um diese Zeit erinnert, die WakeFlow App zu öffnen",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 4182
+        }
+      },
+      {
+        "comment": "",
+        "key": "Wann gehst du schlafen?",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 4173
+        }
+      },
+      {
+        "comment": "",
+        "key": "Wie es funktioniert:",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 4195
+        }
+      },
+      {
+        "comment": "",
+        "key": "1. Stelle deine Schlafenszeit ein",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 4196
+        }
+      },
+      {
+        "comment": "",
+        "key": "2. Um diese Zeit bekommst du eine Erinnerung",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 4197
+        }
+      },
+      {
+        "comment": "",
+        "key": "3. Öffne WakeFlow wenn die Erinnerung kommt",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 4198
+        }
+      },
+      {
+        "comment": "",
+        "key": "4. Die App wird dann für 15-30 Min im Hintergrund aktiv",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 4199
+        }
+      },
+      {
+        "comment": "",
+        "key": "5. Dein Wecker klingelt zuverlässig am nächsten Morgen 🎯",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 4200
+        }
+      },
+      {
+        "comment": "",
+        "key": "Wenn die App trotz Keep-Alive gekillt wird, spielt die Backup-Notification den Alarm-Sound ab. Das funktioniert auch ohne dass die App läuft!",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 4215
+        }
+      },
+      {
+        "comment": "",
+        "key": "Fallback-Notifications",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 4212
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 4225
+        }
+      },
+      {
+        "comment": "",
+        "key": "Deine Schlafenszeit wurde aktualisiert. Du bekommst täglich um %@ eine Erinnerung.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 4230
+        }
+      }
+    ]
+  },
+  "version": 1
+}
