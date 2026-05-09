@@ -2359,14 +2359,15 @@ struct AlarmsView: View {
                     Spacer()
                     
                     // #region agent log
-                    Button(action: { showingPhantomLog = true }) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.yellow)
-                            .frame(width: 36, height: 36)
-                            .background(Circle().fill(.ultraThinMaterial))
-                    }
-                    .padding(.trailing, 8)
+                    // Lupe (Phantom Log Button) ausgeblendet auf Wunsch des Users
+                    // Button(action: { showingPhantomLog = true }) {
+                    //     Image(systemName: "magnifyingglass")
+                    //         .font(.system(size: 16, weight: .semibold))
+                    //         .foregroundColor(.yellow)
+                    //         .frame(width: 36, height: 36)
+                    //         .background(Circle().fill(.ultraThinMaterial))
+                    // }
+                    // .padding(.trailing, 8)
                     // #endregion
 
                     Button(action: {
@@ -2387,50 +2388,52 @@ struct AlarmsView: View {
                 .padding(.bottom, 20)
 
 #if DEBUG
-                if #available(iOS 26.0, *) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            Button("AlarmKit Spike") {
-                                Task {
-                                    await scheduleAlarmKitSpike()
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-
-                            Button("Cancel Spike Alarm") {
-                                cancelAlarmKitSpike()
-                            }
-                            .buttonStyle(.bordered)
-
-                            Button("Plain Notification Spike") {
-                                Task {
-                                    await schedulePlainNotificationSpike()
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-
-                            Button("Cancel Plain Notification") {
-                                cancelPlainNotificationSpike()
-                            }
-                            .buttonStyle(.bordered)
-
-                            Button("Combined Spike") {
-                                Task {
-                                    await scheduleCombinedSpike()
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-
-                            Button("Show Spike Log") {
-                                showingSpikeLog = true
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                        .font(.system(size: 12, weight: .semibold))
-                        .padding(.horizontal, 20)
-                    }
-                    .padding(.bottom, 12)
-                }
+                // Debug-Slidebar (AlarmKit Spike, Cancel Spike Alarm, Plain Notification Spike etc.)
+                // ausgeblendet auf Wunsch des Users
+                // if #available(iOS 26.0, *) {
+                //     ScrollView(.horizontal, showsIndicators: false) {
+                //         HStack(spacing: 8) {
+                //             Button("AlarmKit Spike") {
+                //                 Task {
+                //                     await scheduleAlarmKitSpike()
+                //                 }
+                //             }
+                //             .buttonStyle(.borderedProminent)
+                //
+                //             Button("Cancel Spike Alarm") {
+                //                 cancelAlarmKitSpike()
+                //             }
+                //             .buttonStyle(.bordered)
+                //
+                //             Button("Plain Notification Spike") {
+                //                 Task {
+                //                     await schedulePlainNotificationSpike()
+                //                 }
+                //             }
+                //             .buttonStyle(.borderedProminent)
+                //
+                //             Button("Cancel Plain Notification") {
+                //                 cancelPlainNotificationSpike()
+                //             }
+                //             .buttonStyle(.bordered)
+                //
+                //             Button("Combined Spike") {
+                //                 Task {
+                //                     await scheduleCombinedSpike()
+                //                 }
+                //             }
+                //             .buttonStyle(.borderedProminent)
+                //
+                //             Button("Show Spike Log") {
+                //                 showingSpikeLog = true
+                //             }
+                //             .buttonStyle(.bordered)
+                //         }
+                //         .font(.system(size: 12, weight: .semibold))
+                //         .padding(.horizontal, 20)
+                //     }
+                //     .padding(.bottom, 12)
+                // }
 #endif
                 
                 // Alarms List
